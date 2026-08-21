@@ -1,4 +1,4 @@
-type StatusTone = "human" | "protocol" | "success" | "neutral";
+type StatusTone = "human" | "protocol" | "success" | "error" | "neutral";
 
 export function Status({
   children,

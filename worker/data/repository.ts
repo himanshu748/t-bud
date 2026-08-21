@@ -43,6 +43,15 @@ export interface OrderRecord {
   updatedAt: string;
 }
 
+export interface DepartureOverview {
+  id: string;
+  trekName: string;
+  startAt: string;
+  capacity: number;
+  available: number;
+  status: Departure["status"];
+}
+
 interface AuditRow {
   id: string;
   task_id: string;
@@ -475,6 +484,103 @@ export class D1BookingRepository implements BookingRepository {
       .bind(taskId)
       .all<AuditRow>();
 
+    return rows.results.map((row) => ({
+      id: row.id,
+      taskId: row.task_id,
+      actor: row.actor,
+      action: row.action,
+      target: row.target,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      result: row.result,
+      createdAt: row.created_at
+    }));
+  }
+
+  async listDepartureOverview(): Promise<DepartureOverview[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT departures.id, treks.name AS trek_name, departures.start_at,
+                departures.capacity, departures.available, departures.status
+         FROM departures JOIN treks ON treks.id = departures.trek_id
+         ORDER BY departures.start_at`
+      )
+      .all<{
+        id: string;
+        trek_name: string;
+        start_at: string;
+        capacity: number;
+        available: number;
+        status: Departure["status"];
+      }>();
+    return rows.results.map((row) => ({
+      id: row.id,
+      trekName: row.trek_name,
+      startAt: row.start_at,
+      capacity: row.capacity,
+      available: row.available,
+      status: row.status
+    }));
+  }
+
+  async listRecentTasks(limit = 12): Promise<TaskRecord[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT id, context_id, state, request_json, created_at, updated_at
+         FROM a2a_tasks ORDER BY updated_at DESC LIMIT ?`
+      )
+      .bind(limit)
+      .all<{
+        id: string;
+        context_id: string;
+        state: string;
+        request_json: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    return rows.results.map((row) => ({
+      id: row.id,
+      contextId: row.context_id,
+      state: row.state,
+      request: JSON.parse(row.request_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  async listActiveHolds(now = new Date().toISOString()): Promise<HoldRecord[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT id, departure_id, quote_id, party_size, hold_token, expires_at, status
+         FROM holds WHERE status = 'held' AND expires_at > ? ORDER BY expires_at`
+      )
+      .bind(now)
+      .all<{
+        id: string;
+        departure_id: string;
+        quote_id: string;
+        party_size: number;
+        hold_token: string;
+        expires_at: string;
+        status: HoldRecord["status"];
+      }>();
+    return rows.results.map((row) => ({
+      id: row.id,
+      departureId: row.departure_id,
+      quoteId: row.quote_id,
+      partySize: row.party_size,
+      holdToken: row.hold_token,
+      expiresAt: row.expires_at,
+      status: row.status
+    }));
+  }
+
+  async listRecentAudit(limit = 24): Promise<AuditEvent[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ?`
+      )
+      .bind(limit)
+      .all<AuditRow>();
     return rows.results.map((row) => ({
       id: row.id,
       taskId: row.task_id,
