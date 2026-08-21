@@ -236,6 +236,20 @@ Cliches to avoid: Chatbot-only layout, floating gradient dashboard cards and a g
 - Approval dock: Budget, capacity, consent and one unambiguous next action.
 - Decision ledger: Expandable chronological evidence for every state transition.
 
+### Landing page
+
+The `/` route is a product-specific landing page, not a generic marketing wrapper. Its first viewport pairs the promise, “Make every adventure bookable by an agent, without losing human control,” with a live code-native preview of the buyer-agent and merchant-agent handshake. The primary action is `Run the live demo`; the secondary action is `Inspect the Agent Card`.
+
+The page continues as an evidence-led narrative:
+
+1. A protocol rail shows how A2A discovery, WebMCP tools and Razorpay payment share one bounded booking engine.
+2. A transparent value sequence shows the ₹16,000 base trek, the rejected ₹20,800 premium bundle and the human-approved ₹19,600 alternative.
+3. A failure-recovery sequence demonstrates both budget protection and the last-seat conflict.
+4. A Cloudflare architecture band identifies Workers, Workers AI, D1 and Durable Objects by the concrete responsibility each owns.
+5. The final action returns to `Run the live demo` without invented testimonials, customer logos or performance claims.
+
+The landing page uses the same Trail Instrument visual system as the product. Terrain marks, protocol paths and interaction previews remain code-native. Motion traces agent messages toward the human approval gate, stops there and respects `prefers-reduced-motion`.
+
 ### Secondary merchant console
 
 The console shows the public Agent Card, registered WebMCP tools, inventory status, active holds and incoming tasks. It demonstrates that T-Bud is a merchant adapter, not only a traveller-facing prototype.
@@ -272,6 +286,8 @@ Schema-invalid, timed-out or unavailable inference falls back to deterministic s
 ### Razorpay failure
 
 Order creation is idempotent. A gateway error does not release a still-valid hold immediately, and retrying cannot create duplicate internal orders. Failed signature verification leaves the booking unfulfilled and records a security event.
+
+Local development and automated tests may use a deterministic payment gateway only when Razorpay test credentials are absent. The UI must label that state `Simulated payment gateway`; a deployed buildathon demonstration is considered payment-complete only when it uses Razorpay test mode.
 
 ### WebMCP unavailable
 
