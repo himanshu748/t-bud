@@ -35,7 +35,7 @@ export function ProtocolRail({ phase }: { phase: DemoPhase }) {
     <aside className="demo-rail" aria-label="A2A protocol trace">
       <div className="demo-rail__head">
         <span className="instrument-label">A2A / trace</span>
-        <strong>message.send</strong>
+        <strong>SendMessage</strong>
       </div>
       <ol>
         {steps.map(([stepPhase, label], index) => {

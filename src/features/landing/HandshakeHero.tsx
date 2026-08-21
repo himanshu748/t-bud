@@ -27,7 +27,7 @@ export function HandshakeHero() {
       </section>
 
       <div className="handshake__rail" aria-label="A2A protocol exchange">
-        <p className="instrument-label">A2A / message.send</p>
+        <p className="instrument-label">A2A v1 / SendMessage</p>
         <span className="handshake__rail-line" aria-hidden="true" />
         <span className="handshake__rail-node" aria-hidden="true" />
         <span className="handshake__pulse" aria-hidden="true" />

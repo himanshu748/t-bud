@@ -36,6 +36,7 @@ interface AuditRow {
 export interface BookingRepository {
   createTask(task: TaskRecord): Promise<void>;
   getTask(id: string): Promise<TaskRecord | null>;
+  updateTask(task: TaskRecord): Promise<void>;
   saveQuote(quote: Quote): Promise<void>;
   getQuote(id: string): Promise<Quote | null>;
   listActiveTreks(location: string): Promise<Trek[]>;
@@ -90,6 +91,23 @@ export class D1BookingRepository implements BookingRepository {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  async updateTask(task: TaskRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE a2a_tasks
+         SET context_id = ?, state = ?, request_json = ?, updated_at = ?
+         WHERE id = ?`
+      )
+      .bind(
+        task.contextId,
+        task.state,
+        JSON.stringify(task.request),
+        task.updatedAt,
+        task.id
+      )
+      .run();
   }
 
   async saveQuote(quote: Quote): Promise<void> {

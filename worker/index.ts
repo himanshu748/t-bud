@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { a2aRoutes, agentCardResponse } from "./a2a/routes";
 import type { Env } from "./env";
 import { demoRoutes } from "./http/demo";
 import {
@@ -18,6 +19,8 @@ app.get("/api/health", (context) =>
   context.json({ ok: true, service: "t-bud" as const })
 );
 app.route("/api/demo", demoRoutes);
+app.get("/.well-known/agent-card.json", agentCardResponse);
+app.route("/a2a/v1", a2aRoutes);
 
 app.all("*", (context) => {
   if (context.env.ASSETS) {

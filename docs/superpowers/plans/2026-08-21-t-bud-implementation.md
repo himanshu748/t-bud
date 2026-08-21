@@ -705,7 +705,7 @@ git commit -m "feat: add bounded AI booking recommendations"
 **Interfaces:**
 - Consumes: shared booking tools and repository.
 - Produces: `GET /.well-known/agent-card.json` and JSON-RPC endpoint `/a2a/v1`.
-- Produces: A2A `message/send`, `tasks/get` and `tasks/cancel` methods.
+- Produces: A2A v1 JSON-RPC `SendMessage`, `GetTask` and `CancelTask` methods.
 
 - [ ] **Step 1: Write a failing Agent Card contract test**
 
@@ -725,7 +725,7 @@ it("publishes a v1 JSON-RPC booking skill", async () => {
 
 - [ ] **Step 2: Write failing task lifecycle tests**
 
-Send `message/send` with structured party size, budget and preferences. Assert the response is a task with a stable `contextId`, a structured quote artifact and a concise human-readable summary, then use `tasks/get` and `tasks/cancel` to verify persisted state. Assert the Agent Card does not advertise streaming, push notifications or operations the Worker does not implement.
+Send `SendMessage` with `A2A-Version: 1.0`, structured party size, budget and preferences. Assert the response is a task with a stable `contextId`, a structured quote artifact and a concise human-readable summary, then use `GetTask` and `CancelTask` to verify persisted state. Assert the Agent Card does not advertise streaming, push notifications or operations the Worker does not implement.
 
 - [ ] **Step 3: Run A2A tests and verify failure**
 
@@ -738,7 +738,7 @@ Expected: 404 responses before A2A routes exist.
 const RpcRequest = z.object({
   jsonrpc: z.literal("2.0"),
   id: z.union([z.string(), z.number()]),
-  method: z.enum(["message/send", "tasks/get", "tasks/cancel"]),
+  method: z.enum(["SendMessage", "GetTask", "CancelTask"]),
   params: z.record(z.string(), z.unknown())
 });
 ```
@@ -1083,7 +1083,7 @@ Expected: Worker upload succeeds and returns an HTTPS `workers.dev` or configure
 
 - [ ] **Step 10: Run deployed smoke tests**
 
-Against the deployed URL, verify `/`, `/demo`, `/merchant`, `/.well-known/agent-card.json`, `/api/health`, A2A `message/send`, WebMCP feature detection and Razorpay test checkout. Confirm the deployed decision ledger records the verified payment.
+Against the deployed URL, verify `/`, `/demo`, `/merchant`, `/.well-known/agent-card.json`, `/api/health`, A2A v1 `SendMessage`, WebMCP feature detection and Razorpay test checkout. Confirm the deployed decision ledger records the verified payment.
 
 - [ ] **Step 11: Commit the completed proof of concept**
 
