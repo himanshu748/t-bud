@@ -1,4 +1,5 @@
 import { Link, Route, Routes } from "react-router-dom";
+import { LandingPage } from "../features/landing/LandingPage";
 
 function RoutePlaceholder({ title }: { title: string }) {
   return (
@@ -15,7 +16,7 @@ function RoutePlaceholder({ title }: { title: string }) {
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={<RoutePlaceholder title="T-Bud" />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/demo" element={<RoutePlaceholder title="T-Bud demo" />} />
       <Route
         path="/merchant"

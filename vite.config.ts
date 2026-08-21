@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
@@ -7,6 +7,12 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./test/ui/setup.ts"],
-    exclude: ["test/worker/**", "test/data/**", "test/a2a/**", "test/holds/**"]
+    exclude: [
+      ...configDefaults.exclude,
+      "test/worker/**",
+      "test/data/**",
+      "test/a2a/**",
+      "test/holds/**"
+    ]
   }
 });
