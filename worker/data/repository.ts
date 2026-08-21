@@ -211,6 +211,13 @@ export class D1BookingRepository implements BookingRepository {
     return mapQuote(row, items.results);
   }
 
+  async refreshQuoteExpiry(id: string, expiresAt: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE quotes SET expires_at = ?, status = 'ready' WHERE id = ?")
+      .bind(expiresAt, id)
+      .run();
+  }
+
   async listActiveTreks(location: string): Promise<Trek[]> {
     const rows = await this.db
       .prepare(

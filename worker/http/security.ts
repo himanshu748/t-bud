@@ -35,7 +35,7 @@ export function sessionMiddleware(): MiddlewareHandler<AppContext> {
       session = newSessionId();
       setCookie(context, "tb_session", session, {
         httpOnly: true,
-        secure: true,
+        secure: new URL(context.req.url).protocol === "https:",
         sameSite: "Lax",
         path: "/",
         maxAge: 60 * 60 * 8

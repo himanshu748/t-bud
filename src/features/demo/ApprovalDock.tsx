@@ -8,6 +8,7 @@ interface ApprovalDockProps {
   onReviewRevision(): void;
   onApproveItinerary(): void;
   onRequestHold(): void;
+  onSimulateSellout(): void;
   onApprovePayment(): void;
   onOpenCheckout(): void;
   onReset(): void;
@@ -18,7 +19,7 @@ function actionFor(props: ApprovalDockProps) {
   if (state.phase === "idle") return ["Send booking intent", props.onStart] as const;
   if (state.phase === "budget_conflict") return ["Review ₹19,600 bundle", props.onReviewRevision] as const;
   if (state.phase === "quote_ready") return ["Approve itinerary", props.onApproveItinerary] as const;
-  if (state.phase === "itinerary_approved" || state.phase === "capacity_conflict") {
+  if (state.phase === "itinerary_approved") {
     return ["Hold 4 seats", props.onRequestHold] as const;
   }
   if (state.phase === "held") return [`Approve payment of ${formatInr(state.quote.total)}`, props.onApprovePayment] as const;
@@ -40,6 +41,8 @@ export function ApprovalDock(props: ApprovalDockProps) {
         <strong>
           {waiting
             ? "Agents are preparing a reviewable result"
+            : state.phase === "checkout"
+              ? "Complete payment in the gateway below"
             : action
               ? "T-Bud is paused until you act"
               : state.phase === "paid"
@@ -53,6 +56,16 @@ export function ApprovalDock(props: ApprovalDockProps) {
         {action ? (
           <button className="button button--primary" type="button" onClick={action[1]} disabled={busy || waiting}>
             {busy ? "Verifying…" : action[0]}
+          </button>
+        ) : null}
+        {state.phase === "itinerary_approved" ? (
+          <button
+            className="text-action"
+            type="button"
+            onClick={props.onSimulateSellout}
+            disabled={busy}
+          >
+            Simulate last-seat sellout
           </button>
         ) : null}
         {state.phase !== "idle" ? (

@@ -19,6 +19,10 @@ const phaseLabel: Record<DemoState["phase"], string> = {
 
 export function MerchantPanel({ state }: { state: DemoState }) {
   const conflict = state.phase === "budget_conflict";
+  const capacityConflict = state.phase === "capacity_conflict";
+  const holdActive = ["held", "payment_approved", "checkout", "paid"].includes(
+    state.phase
+  );
   const preQuote = ["idle", "discovering", "searching"].includes(state.phase);
   return (
     <section className="demo-panel demo-panel--merchant" aria-labelledby="merchant-panel-title">
@@ -32,8 +36,8 @@ export function MerchantPanel({ state }: { state: DemoState }) {
           <span className="instrument-label">Quote v{state.quote.version}</span>
           <h3>{phaseLabel[state.phase]}</h3>
         </div>
-        <Status tone={conflict ? "human" : state.phase === "paid" ? "success" : "protocol"}>
-          {conflict ? "Review needed" : state.phase.replaceAll("_", " ")}
+        <Status tone={conflict || capacityConflict ? "human" : state.phase === "paid" ? "success" : "protocol"}>
+          {conflict || capacityConflict ? "Review needed" : state.phase.replaceAll("_", " ")}
         </Status>
       </div>
 
@@ -67,11 +71,21 @@ export function MerchantPanel({ state }: { state: DemoState }) {
           <strong>{formatInr(state.quote.total - state.quote.budget)} over the hard ceiling</strong>
           <p>Keep pickup. Replace premium camp meals with the eligible trail meal upgrade.</p>
         </div>
+      ) : capacityConflict ? (
+        <div className="policy-note policy-note--error">
+          <span>CAPACITY / CONFLICT</span>
+          <strong>Last seats sold out</strong>
+          <p>The original approval is invalid. Another departure must be reviewed before any hold.</p>
+        </div>
       ) : (
         <div className="policy-note">
           <span>POLICY / ELIGIBLE</span>
           <strong>{formatInr(state.quote.budget - state.quote.total)} remains inside budget</strong>
-          <p>Catalog price and four-seat availability were checked. No hold exists until H1 approval.</p>
+          <p>
+            {holdActive
+              ? "Four seats are held. Checkout remains bound to the separate H2 payment approval."
+              : "Catalog price and four-seat availability were checked. No hold exists until H1 approval."}
+          </p>
         </div>
       )}
     </section>

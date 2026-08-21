@@ -141,6 +141,7 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
             onReviewRevision={() => dispatch({ type: "REVISION_ACCEPTED" })}
             onApproveItinerary={approveItinerary}
             onRequestHold={requestHold}
+            onSimulateSellout={() => dispatch({ type: "CAPACITY_CONFLICT" })}
             onApprovePayment={approvePayment}
             onOpenCheckout={openCheckout}
             onReset={reset}

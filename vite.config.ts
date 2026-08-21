@@ -9,6 +9,7 @@ export default defineConfig({
     setupFiles: ["./test/ui/setup.ts"],
     exclude: [
       ...configDefaults.exclude,
+      "e2e/**",
       "test/worker/**",
       "test/data/**",
       "test/a2a/**",

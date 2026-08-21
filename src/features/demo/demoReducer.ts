@@ -179,7 +179,7 @@ function seededLedger(phase: DemoPhase): LedgerEntry[] {
 function pendingAction(phase: DemoPhase): PendingHumanAction {
   if (phase === "budget_conflict") return "review_cheaper_bundle";
   if (phase === "quote_ready") return "approve_itinerary";
-  if (phase === "itinerary_approved" || phase === "capacity_conflict") return "request_hold";
+  if (phase === "itinerary_approved") return "request_hold";
   if (phase === "held") return "approve_payment";
   if (phase === "payment_approved") return "open_checkout";
   return null;
@@ -279,7 +279,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         {
           ...state,
           phase: "capacity_conflict",
-          pendingHumanAction: "request_hold",
+          pendingHumanAction: null,
           hold: null,
           error: null
         },

@@ -25,7 +25,12 @@ const PaymentApprovalInput = z
 
 async function ensureDemoQuote(repository: D1BookingRepository): Promise<Quote> {
   const existing = await repository.getQuote("quote_demo_v2");
-  if (existing) return existing;
+  if (existing) {
+    if (Date.parse(existing.expiresAt) > Date.now()) return existing;
+    const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+    await repository.refreshQuoteExpiry(existing.id, expiresAt);
+    return { ...existing, expiresAt, status: "ready" };
+  }
 
   const now = new Date();
   if (!(await repository.getTask("task_demo"))) {

@@ -25,6 +25,7 @@ export default defineConfig({
     setupFiles: ["./test/worker/setup.ts"],
     exclude: [
       ...configDefaults.exclude,
+      "e2e/**",
       "test/ui/**",
       "test/ai/**",
       "test/domain/**"

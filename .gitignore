@@ -8,5 +8,7 @@ dist/
 .superpowers/
 .worktrees/
 coverage/
+test-results/
+playwright-report/
 *.log
 outputs/

@@ -117,4 +117,24 @@ describe("DemoPage", () => {
     });
     expect(await screen.findByText("Booking verified")).toBeVisible();
   });
+
+  it("demonstrates a last-seat sellout without retaining approval", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <DemoPage initialPhase="itinerary_approved" api={api()} />
+      </MemoryRouter>
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /simulate last-seat sellout/i })
+    );
+    expect(screen.getAllByText("Last seats sold out")).toHaveLength(2);
+    expect(
+      screen.getByText(/original approval invalidated/i)
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /hold 4 seats/i })
+    ).not.toBeInTheDocument();
+  });
 });
