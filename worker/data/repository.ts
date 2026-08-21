@@ -1,0 +1,215 @@
+import type { AuditEvent } from "../audit/service";
+import type { Departure, Quote, Trek } from "../domain/types";
+import {
+  mapDeparture,
+  mapQuote,
+  mapTrek,
+  type DepartureRow,
+  type QuoteItemRow,
+  type QuoteRow,
+  type TrekRow
+} from "./schema";
+
+export interface TaskRecord {
+  id: string;
+  contextId: string;
+  state: string;
+  request: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface AuditRow {
+  id: string;
+  task_id: string;
+  actor: AuditEvent["actor"];
+  action: string;
+  target: string;
+  payload_json: string;
+  result: AuditEvent["result"];
+  created_at: string;
+}
+
+export interface BookingRepository {
+  createTask(task: TaskRecord): Promise<void>;
+  getTask(id: string): Promise<TaskRecord | null>;
+  saveQuote(quote: Quote): Promise<void>;
+  getQuote(id: string): Promise<Quote | null>;
+  listActiveTreks(location: string): Promise<Trek[]>;
+  listDepartures(trekId: string): Promise<Departure[]>;
+  appendAudit(event: AuditEvent): Promise<void>;
+  listAudit(taskId: string): Promise<AuditEvent[]>;
+}
+
+export class D1BookingRepository implements BookingRepository {
+  constructor(private readonly db: D1Database) {}
+
+  async createTask(task: TaskRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO a2a_tasks
+          (id, context_id, state, request_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        task.id,
+        task.contextId,
+        task.state,
+        JSON.stringify(task.request),
+        task.createdAt,
+        task.updatedAt
+      )
+      .run();
+  }
+
+  async getTask(id: string): Promise<TaskRecord | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM a2a_tasks WHERE id = ?")
+      .bind(id)
+      .first<{
+        id: string;
+        context_id: string;
+        state: string;
+        request_json: string;
+        created_at: string;
+        updated_at: string;
+      }>();
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      contextId: row.context_id,
+      state: row.state,
+      request: JSON.parse(row.request_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  async saveQuote(quote: Quote): Promise<void> {
+    const statements = [
+      this.db
+        .prepare(
+          `INSERT INTO quotes
+            (id, task_id, version, trek_id, departure_id, party_size, budget,
+             currency, total, expires_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          quote.id,
+          quote.taskId,
+          quote.version,
+          quote.trekId,
+          quote.departureId,
+          quote.partySize,
+          quote.budget,
+          quote.currency,
+          quote.total,
+          quote.expiresAt,
+          quote.status
+        ),
+      ...quote.items.map((item, position) =>
+        this.db
+          .prepare(
+            `INSERT INTO quote_items
+              (quote_id, position, item_id, kind, name, quantity, unit_amount, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            quote.id,
+            position,
+            item.id,
+            item.kind,
+            item.name,
+            item.quantity,
+            item.unitAmount,
+            item.amount
+          )
+      )
+    ];
+
+    await this.db.batch(statements);
+  }
+
+  async getQuote(id: string): Promise<Quote | null> {
+    const row = await this.db
+      .prepare("SELECT * FROM quotes WHERE id = ?")
+      .bind(id)
+      .first<QuoteRow>();
+    if (!row) return null;
+
+    const items = await this.db
+      .prepare(
+        `SELECT item_id, kind, name, quantity, unit_amount, amount
+         FROM quote_items WHERE quote_id = ? ORDER BY position`
+      )
+      .bind(id)
+      .all<QuoteItemRow>();
+
+    return mapQuote(row, items.results);
+  }
+
+  async listActiveTreks(location: string): Promise<Trek[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT id, name, location, duration_days, duration_nights, difficulty,
+                unit_amount, active
+         FROM treks WHERE active = 1 AND location = ? ORDER BY name`
+      )
+      .bind(location)
+      .all<TrekRow>();
+    return rows.results.map(mapTrek);
+  }
+
+  async listDepartures(trekId: string): Promise<Departure[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT id, trek_id, start_at, capacity, available, status
+         FROM departures WHERE trek_id = ? AND status = 'active' ORDER BY start_at`
+      )
+      .bind(trekId)
+      .all<DepartureRow>();
+    return rows.results.map(mapDeparture);
+  }
+
+  async appendAudit(event: AuditEvent): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO audit_events
+          (id, task_id, actor, action, target, payload_json, result, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        event.id,
+        event.taskId,
+        event.actor,
+        event.action,
+        event.target,
+        JSON.stringify(event.payload),
+        event.result,
+        event.createdAt
+      )
+      .run();
+  }
+
+  async listAudit(taskId: string): Promise<AuditEvent[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT * FROM audit_events
+         WHERE task_id = ? ORDER BY created_at, id`
+      )
+      .bind(taskId)
+      .all<AuditRow>();
+
+    return rows.results.map((row) => ({
+      id: row.id,
+      taskId: row.task_id,
+      actor: row.actor,
+      action: row.action,
+      target: row.target,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      result: row.result,
+      createdAt: row.created_at
+    }));
+  }
+}

@@ -6,7 +6,7 @@
 
 **Architecture:** A React and Vite interface is served from the same Cloudflare Worker that owns A2A, booking-tool and payment routes. Shared domain services keep AI advisory while deterministic policy, D1, Durable Objects and approval digests remain authoritative.
 
-**Tech Stack:** TypeScript, React, Vite, Hono, Zod, Cloudflare Workers, Workers AI, D1, Durable Objects, Razorpay Standard Checkout, Vitest, Cloudflare Vitest Pool Workers, Testing Library and Playwright.
+**Tech Stack:** TypeScript, React, Vite, Hono, Zod, Cloudflare Workers, Workers AI, D1, Durable Objects, Razorpay Standard Checkout, Vitest, Cloudflare Vitest Plugin, Testing Library and Playwright.
 
 **Spec:** `docs/superpowers/specs/2026-08-21-t-bud-agentic-booking-design.md`
 
@@ -147,12 +147,12 @@ Use these scripts and dependency groups in `package.json`:
 }
 ```
 
-Install runtime dependencies with `npm install react react-dom react-router-dom hono zod` and development dependencies with `npm install -D typescript vite @types/node @types/react @types/react-dom @vitejs/plugin-react vitest @cloudflare/vitest-pool-workers wrangler @cloudflare/workers-types @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom @playwright/test @axe-core/playwright`.
+Install runtime dependencies with `npm install react react-dom react-router-dom hono zod` and development dependencies with `npm install -D typescript vite @types/node @types/react @types/react-dom @vitejs/plugin-react vitest @cloudflare/vitest-plugin wrangler @cloudflare/workers-types @testing-library/react @testing-library/user-event @testing-library/jest-dom jsdom @playwright/test @axe-core/playwright`.
 
 Configure `vite.config.ts` with `react()` and a jsdom Vitest environment that loads `test/ui/setup.ts`. Configure the current Cloudflare Workers Vitest plugin in `vitest.config.worker.ts`:
 
 ```ts
-import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
+import { cloudflareTest } from "@cloudflare/vitest-plugin";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({

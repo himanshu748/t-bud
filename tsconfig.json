@@ -19,7 +19,7 @@
       "vitest/globals",
       "@testing-library/jest-dom",
       "@cloudflare/workers-types",
-      "@cloudflare/vitest-pool-workers/types"
+      "@cloudflare/vitest-plugin/types"
     ]
   },
   "include": ["src", "worker", "test", "vite.config.ts", "vitest.config.worker.ts", "playwright.config.ts"]
