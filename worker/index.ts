@@ -1,14 +1,23 @@
 import { Hono } from "hono";
 import type { Env } from "./env";
-import { secureHeaders } from "./http/security";
+import { demoRoutes } from "./http/demo";
+import {
+  sameOriginMutations,
+  secureHeaders,
+  sessionMiddleware,
+  type SecurityVariables
+} from "./http/security";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{ Bindings: Env; Variables: SecurityVariables }>();
 
 app.use("*", secureHeaders());
+app.use("/api/*", sessionMiddleware());
+app.use("/api/*", sameOriginMutations());
 
 app.get("/api/health", (context) =>
   context.json({ ok: true, service: "t-bud" as const })
 );
+app.route("/api/demo", demoRoutes);
 
 app.all("*", (context) => {
   if (context.env.ASSETS) {

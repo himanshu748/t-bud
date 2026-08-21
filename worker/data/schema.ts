@@ -1,10 +1,20 @@
 import { money } from "../domain/money";
 import type {
+  Addon,
   Departure,
   Quote,
   QuoteItem,
   Trek
 } from "../domain/types";
+
+export interface AddonRow {
+  id: string;
+  name: string;
+  category: Addon["category"];
+  scope: Addon["scope"];
+  unit_amount: number;
+  active: number;
+}
 
 export interface TrekRow {
   id: string;
@@ -57,6 +67,17 @@ export function mapTrek(row: TrekRow): Trek {
     durationDays: row.duration_days,
     durationNights: row.duration_nights,
     difficulty: row.difficulty,
+    unitAmount: money(row.unit_amount),
+    active: row.active === 1
+  };
+}
+
+export function mapAddon(row: AddonRow): Addon {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    scope: row.scope,
     unitAmount: money(row.unit_amount),
     active: row.active === 1
   };

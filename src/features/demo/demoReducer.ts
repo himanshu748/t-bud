@@ -71,13 +71,13 @@ const revisedItems: DemoQuote["items"] = [
     id: "addon_pickup",
     name: "Manali pickup",
     detail: "Private group transfer",
-    amount: 160_000
+    amount: 200_000
   },
   {
     id: "addon_meals_budget",
     name: "Trail meal upgrade",
     detail: "Four vegetarian meal plans",
-    amount: 200_000
+    amount: 160_000
   }
 ];
 
@@ -88,7 +88,7 @@ const premiumItems: DemoQuote["items"] = revisedItems.map((item) =>
         id: "addon_meals_premium",
         name: "Premium camp meals",
         detail: "Four premium meal plans",
-        amount: 320_000
+        amount: 280_000
       }
     : item
 );

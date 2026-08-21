@@ -3,11 +3,12 @@ import {
   cloudflareTest,
   readD1Migrations
 } from "@cloudflare/vitest-plugin";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [
     cloudflareTest(async () => ({
+      remoteBindings: false,
       wrangler: { configPath: "./wrangler.jsonc" },
       miniflare: {
         bindings: {
@@ -20,6 +21,12 @@ export default defineConfig({
   ],
   test: {
     globals: true,
-    setupFiles: ["./test/worker/setup.ts"]
+    setupFiles: ["./test/worker/setup.ts"],
+    exclude: [
+      ...configDefaults.exclude,
+      "test/ui/**",
+      "test/ai/**",
+      "test/domain/**"
+    ]
   }
 });

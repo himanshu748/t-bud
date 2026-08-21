@@ -1,9 +1,12 @@
 import type { AuditEvent } from "../audit/service";
-import type { Departure, Quote, Trek } from "../domain/types";
+import type { Approval, ApprovalGate } from "../domain/approval";
+import type { Addon, Departure, Quote, Trek } from "../domain/types";
 import {
+  mapAddon,
   mapDeparture,
   mapQuote,
   mapTrek,
+  type AddonRow,
   type DepartureRow,
   type QuoteItemRow,
   type QuoteRow,
@@ -37,6 +40,9 @@ export interface BookingRepository {
   getQuote(id: string): Promise<Quote | null>;
   listActiveTreks(location: string): Promise<Trek[]>;
   listDepartures(trekId: string): Promise<Departure[]>;
+  listActiveAddons(): Promise<Addon[]>;
+  saveApproval(id: string, approval: Approval): Promise<void>;
+  getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null>;
   appendAudit(event: AuditEvent): Promise<void>;
   listAudit(taskId: string): Promise<AuditEvent[]>;
 }
@@ -170,6 +176,67 @@ export class D1BookingRepository implements BookingRepository {
       .bind(trekId)
       .all<DepartureRow>();
     return rows.results.map(mapDeparture);
+  }
+
+  async listActiveAddons(): Promise<Addon[]> {
+    const rows = await this.db
+      .prepare(
+        `SELECT id, name, category, scope, unit_amount, active
+         FROM addons WHERE active = 1 ORDER BY category, unit_amount, id`
+      )
+      .all<AddonRow>();
+    return rows.results.map(mapAddon);
+  }
+
+  async saveApproval(id: string, approval: Approval): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO approvals
+          (id, quote_id, quote_version, gate, actor_session_id, digest, approved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(quote_id, gate) DO UPDATE SET
+           id = excluded.id,
+           quote_version = excluded.quote_version,
+           actor_session_id = excluded.actor_session_id,
+           digest = excluded.digest,
+           approved_at = excluded.approved_at`
+      )
+      .bind(
+        id,
+        approval.quoteId,
+        approval.quoteVersion,
+        approval.gate,
+        approval.actorSessionId,
+        approval.digest,
+        approval.approvedAt
+      )
+      .run();
+  }
+
+  async getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT quote_id, quote_version, gate, actor_session_id, digest, approved_at
+         FROM approvals WHERE quote_id = ? AND gate = ?`
+      )
+      .bind(quoteId, gate)
+      .first<{
+        quote_id: string;
+        quote_version: number;
+        gate: ApprovalGate;
+        actor_session_id: string;
+        digest: string;
+        approved_at: string;
+      }>();
+    if (!row) return null;
+    return {
+      quoteId: row.quote_id,
+      quoteVersion: row.quote_version,
+      gate: row.gate,
+      actorSessionId: row.actor_session_id,
+      digest: row.digest,
+      approvedAt: row.approved_at
+    };
   }
 
   async appendAudit(event: AuditEvent): Promise<void> {

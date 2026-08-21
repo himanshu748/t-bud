@@ -76,4 +76,9 @@ it("loads the seeded Manali trek inventory", async () => {
   await expect(
     repository.listDepartures("trek_hampta")
   ).resolves.toHaveLength(2);
+  await expect(repository.listActiveAddons()).resolves.toEqual([
+    expect.objectContaining({ id: "meals_budget", unitAmount: 40_000 }),
+    expect.objectContaining({ id: "meals_premium", unitAmount: 70_000 }),
+    expect.objectContaining({ id: "pickup_manali", unitAmount: 200_000 })
+  ]);
 });
