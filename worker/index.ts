@@ -2,12 +2,15 @@ import { Hono } from "hono";
 import { a2aRoutes, agentCardResponse } from "./a2a/routes";
 import type { Env } from "./env";
 import { demoRoutes } from "./http/demo";
+import { toolRoutes } from "./http/tools";
 import {
   sameOriginMutations,
   secureHeaders,
   sessionMiddleware,
   type SecurityVariables
 } from "./http/security";
+
+export { DepartureHold } from "./holds/DepartureHold";
 
 const app = new Hono<{ Bindings: Env; Variables: SecurityVariables }>();
 
@@ -19,6 +22,7 @@ app.get("/api/health", (context) =>
   context.json({ ok: true, service: "t-bud" as const })
 );
 app.route("/api/demo", demoRoutes);
+app.route("/api/tools", toolRoutes);
 app.get("/.well-known/agent-card.json", agentCardResponse);
 app.route("/a2a/v1", a2aRoutes);
 

@@ -22,6 +22,16 @@ export interface TaskRecord {
   updatedAt: string;
 }
 
+export interface HoldRecord {
+  id: string;
+  departureId: string;
+  quoteId: string;
+  partySize: number;
+  holdToken: string;
+  expiresAt: string;
+  status: "held" | "released" | "expired";
+}
+
 interface AuditRow {
   id: string;
   task_id: string;
@@ -44,6 +54,8 @@ export interface BookingRepository {
   listActiveAddons(): Promise<Addon[]>;
   saveApproval(id: string, approval: Approval): Promise<void>;
   getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null>;
+  saveHold(hold: HoldRecord): Promise<void>;
+  getActiveHoldByQuote(quoteId: string): Promise<HoldRecord | null>;
   appendAudit(event: AuditEvent): Promise<void>;
   listAudit(taskId: string): Promise<AuditEvent[]>;
 }
@@ -254,6 +266,53 @@ export class D1BookingRepository implements BookingRepository {
       actorSessionId: row.actor_session_id,
       digest: row.digest,
       approvedAt: row.approved_at
+    };
+  }
+
+  async saveHold(hold: HoldRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO holds
+          (id, departure_id, quote_id, party_size, hold_token, expires_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        hold.id,
+        hold.departureId,
+        hold.quoteId,
+        hold.partySize,
+        hold.holdToken,
+        hold.expiresAt,
+        hold.status
+      )
+      .run();
+  }
+
+  async getActiveHoldByQuote(quoteId: string): Promise<HoldRecord | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, departure_id, quote_id, party_size, hold_token, expires_at, status
+         FROM holds WHERE quote_id = ? AND status = 'held' ORDER BY expires_at DESC LIMIT 1`
+      )
+      .bind(quoteId)
+      .first<{
+        id: string;
+        departure_id: string;
+        quote_id: string;
+        party_size: number;
+        hold_token: string;
+        expires_at: string;
+        status: HoldRecord["status"];
+      }>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      departureId: row.departure_id,
+      quoteId: row.quote_id,
+      partySize: row.party_size,
+      holdToken: row.hold_token,
+      expiresAt: row.expires_at,
+      status: row.status
     };
   }
 

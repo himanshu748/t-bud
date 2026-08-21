@@ -9,6 +9,14 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": true
   },
+  "durable_objects": {
+    "bindings": [
+      { "name": "DEPARTURE_HOLD", "class_name": "DepartureHold" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DepartureHold"] }
+  ],
   "ai": {
     "binding": "AI"
   },

@@ -4,8 +4,11 @@ import { D1BookingRepository } from "../data/repository";
 import { quoteDigest, type Approval } from "../domain/approval";
 import { money } from "../domain/money";
 import { evaluateBundle } from "../domain/policy";
+import { BookingTools } from "../domain/tools";
 import type { BookingRequest, Quote } from "../domain/types";
 import type { Env } from "../env";
+import type { HoldResult } from "../holds/DepartureHold";
+import { DepartureHoldService } from "../holds/service";
 import { jsonError } from "./errors";
 import { enforceRateLimit, type SecurityVariables } from "./security";
 
@@ -125,4 +128,49 @@ demoRoutes.post("/approve-itinerary", async (context) => {
   });
 
   return context.json({ approvedAt });
+});
+
+demoRoutes.post("/holds", async (context) => {
+  const input = ApprovalInput.safeParse(await context.req.json().catch(() => null));
+  if (!input.success) {
+    return jsonError(context, 400, "invalid_request", "A valid demo quote is required");
+  }
+
+  const repository = new D1BookingRepository(context.env.DB);
+  const quote = await ensureDemoQuote(repository);
+  const sessionId = context.get("sessionId");
+  if (!(await enforceRateLimit(context.env.HOLD_RATE_LIMITER, sessionId, context.req.path))) {
+    return jsonError(context, 429, "rate_limited", "Too many hold attempts");
+  }
+  const approval = await repository.getApproval(quote.id, "itinerary");
+  const tools = new BookingTools({
+    repository,
+    hold: new DepartureHoldService(context.env, repository)
+  });
+
+  try {
+    const result = (await tools.requestHold({
+      quote,
+      approval,
+      sessionId
+    })) as HoldResult;
+    if (result.status !== "held") {
+      return jsonError(
+        context,
+        409,
+        result.status,
+        result.status === "capacity_conflict"
+          ? "Those seats just sold out. Review another departure."
+          : "The quote expired before seats could be held."
+      );
+    }
+    return context.json(result);
+  } catch (error) {
+    return jsonError(
+      context,
+      409,
+      "hold_not_allowed",
+      error instanceof Error ? error.message : "Hold could not be created"
+    );
+  }
 });
