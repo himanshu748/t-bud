@@ -48,6 +48,10 @@ export function sessionMiddleware(): MiddlewareHandler<AppContext> {
 
 export function sameOriginMutations(): MiddlewareHandler<AppContext> {
   return async (context, next) => {
+    if (context.req.path === "/api/payments/webhook") {
+      await next();
+      return;
+    }
     if (["GET", "HEAD", "OPTIONS"].includes(context.req.method)) {
       await next();
       return;

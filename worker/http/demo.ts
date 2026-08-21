@@ -1,7 +1,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { D1BookingRepository } from "../data/repository";
-import { quoteDigest, type Approval } from "../domain/approval";
+import {
+  approvalMatches,
+  quoteDigest,
+  type Approval
+} from "../domain/approval";
 import { money } from "../domain/money";
 import { evaluateBundle } from "../domain/policy";
 import { BookingTools } from "../domain/tools";
@@ -15,6 +19,9 @@ import { enforceRateLimit, type SecurityVariables } from "./security";
 type AppContext = { Bindings: Env; Variables: SecurityVariables };
 
 const ApprovalInput = z.object({ quoteId: z.literal("quote_demo_v2") }).strict();
+const PaymentApprovalInput = z
+  .object({ holdId: z.string().min(1).max(160) })
+  .strict();
 
 async function ensureDemoQuote(repository: D1BookingRepository): Promise<Quote> {
   const existing = await repository.getQuote("quote_demo_v2");
@@ -173,4 +180,59 @@ demoRoutes.post("/holds", async (context) => {
       error instanceof Error ? error.message : "Hold could not be created"
     );
   }
+});
+
+demoRoutes.post("/approve-payment", async (context) => {
+  const input = PaymentApprovalInput.safeParse(
+    await context.req.json().catch(() => null)
+  );
+  if (!input.success) {
+    return jsonError(context, 400, "invalid_request", "An active hold is required");
+  }
+
+  const repository = new D1BookingRepository(context.env.DB);
+  const hold = await repository.getHold(input.data.holdId);
+  if (!hold || hold.status !== "held" || Date.parse(hold.expiresAt) <= Date.now()) {
+    return jsonError(context, 409, "hold_expired", "An active hold is required");
+  }
+  const quote = await repository.getQuote(hold.quoteId);
+  if (!quote) return jsonError(context, 404, "quote_not_found", "Quote not found");
+  const sessionId = context.get("sessionId");
+  const itineraryApproval = await repository.getApproval(quote.id, "itinerary");
+  if (
+    !itineraryApproval ||
+    !(await approvalMatches(itineraryApproval, quote, sessionId))
+  ) {
+    return jsonError(
+      context,
+      403,
+      "itinerary_approval_required",
+      "This session must approve the itinerary first"
+    );
+  }
+  if (!(await enforceRateLimit(context.env.CHECKOUT_RATE_LIMITER, sessionId, context.req.path))) {
+    return jsonError(context, 429, "rate_limited", "Too many payment approval attempts");
+  }
+
+  const approvedAt = new Date().toISOString();
+  const approval: Approval = {
+    quoteId: quote.id,
+    quoteVersion: quote.version,
+    actorSessionId: sessionId,
+    gate: "payment",
+    digest: await quoteDigest(quote, sessionId),
+    approvedAt
+  };
+  await repository.saveApproval(crypto.randomUUID(), approval);
+  await repository.appendAudit({
+    id: crypto.randomUUID(),
+    taskId: quote.taskId,
+    actor: "human",
+    action: "approval.payment_recorded",
+    target: quote.id,
+    payload: { holdId: hold.id, amount: quote.total },
+    result: "accepted",
+    createdAt: approvedAt
+  });
+  return context.json({ approvedAt });
 });

@@ -17,6 +17,15 @@ function api(overrides: Partial<DemoApi> = {}): DemoApi {
     approvePayment: vi.fn().mockResolvedValue({
       approvedAt: "2026-08-21T10:01:00.000Z"
     }),
+    createCheckout: vi.fn().mockResolvedValue({
+      orderId: "order_sim_demo",
+      keyId: "rzp_test_simulated",
+      amount: 1_960_000,
+      currency: "INR",
+      simulated: true
+    }),
+    verifyPayment: vi.fn().mockResolvedValue({ verified: true }),
+    simulatePayment: vi.fn().mockResolvedValue({ verified: true }),
     ...overrides
   };
 }
@@ -78,5 +87,34 @@ describe("DemoPage", () => {
     expect(screen.getByText("₹20,800")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /review ₹19,600 bundle/i }));
     expect(screen.getByRole("button", { name: /approve itinerary/i })).toBeEnabled();
+  });
+
+  it("keeps checkout behind a separate payment approval", async () => {
+    const user = userEvent.setup();
+    const client = api();
+    render(
+      <MemoryRouter>
+        <DemoPage initialPhase="held" api={client} />
+      </MemoryRouter>
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /open razorpay test checkout/i })
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: /approve payment of ₹19,600/i })
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /open razorpay test checkout/i })
+    );
+
+    expect(await screen.findByText("Simulated payment gateway")).toBeVisible();
+    await user.click(
+      screen.getByRole("button", { name: /complete simulated payment/i })
+    );
+    await waitFor(() => {
+      expect(client.simulatePayment).toHaveBeenCalledWith("order_sim_demo");
+    });
+    expect(await screen.findByText("Booking verified")).toBeVisible();
   });
 });

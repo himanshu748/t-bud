@@ -3,6 +3,7 @@ import { a2aRoutes, agentCardResponse } from "./a2a/routes";
 import type { Env } from "./env";
 import { demoRoutes } from "./http/demo";
 import { toolRoutes } from "./http/tools";
+import { paymentRoutes } from "./razorpay/routes";
 import {
   sameOriginMutations,
   secureHeaders,
@@ -23,6 +24,7 @@ app.get("/api/health", (context) =>
 );
 app.route("/api/demo", demoRoutes);
 app.route("/api/tools", toolRoutes);
+app.route("/api/payments", paymentRoutes);
 app.get("/.well-known/agent-card.json", agentCardResponse);
 app.route("/a2a/v1", a2aRoutes);
 

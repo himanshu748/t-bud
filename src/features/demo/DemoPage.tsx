@@ -9,6 +9,10 @@ import { DecisionLedger } from "./DecisionLedger";
 import { demoReducer, createInitialDemoState, type DemoPhase } from "./demoReducer";
 import { MerchantPanel } from "./MerchantPanel";
 import { ProtocolRail } from "./ProtocolRail";
+import {
+  RazorpayCheckout,
+  type CheckoutDetails
+} from "./RazorpayCheckout";
 
 export interface DemoPageProps {
   initialPhase?: DemoPhase;
@@ -22,6 +26,7 @@ function errorMessage(error: unknown): string {
 export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps) {
   const [state, dispatch] = useReducer(demoReducer, initialPhase, createInitialDemoState);
   const [busy, setBusy] = useState(false);
+  const [checkout, setCheckout] = useState<CheckoutDetails | null>(null);
   const timers = useRef<number[]>([]);
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
@@ -70,9 +75,38 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
     });
   }
 
+  function openCheckout() {
+    void runVerified(async () => {
+      const result = await api.createCheckout(state.quote.id);
+      setCheckout(result);
+      dispatch({ type: "CHECKOUT_OPENED" });
+    });
+  }
+
+  function verifyCheckout(input: {
+    orderId: string;
+    paymentId: string;
+    signature?: string;
+  }) {
+    void runVerified(async () => {
+      if (checkout?.simulated) {
+        await api.simulatePayment(input.orderId);
+      } else {
+        if (!input.signature) throw new Error("Razorpay signature is missing");
+        await api.verifyPayment({
+          orderId: input.orderId,
+          paymentId: input.paymentId,
+          signature: input.signature
+        });
+      }
+      dispatch({ type: "PAYMENT_VERIFIED" });
+    });
+  }
+
   function reset() {
     timers.current.forEach(window.clearTimeout);
     timers.current = [];
+    setCheckout(null);
     dispatch({ type: "RESET" });
   }
 
@@ -108,12 +142,15 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
             onApproveItinerary={approveItinerary}
             onRequestHold={requestHold}
             onApprovePayment={approvePayment}
-            onOpenCheckout={() => dispatch({ type: "CHECKOUT_OPENED" })}
+            onOpenCheckout={openCheckout}
             onReset={reset}
           />
           <BuyerPanel state={state} />
           <ProtocolRail phase={state.phase} />
           <MerchantPanel state={state} />
+          {checkout ? (
+            <RazorpayCheckout checkout={checkout} onVerified={verifyCheckout} />
+          ) : null}
         </div>
 
         <DecisionLedger state={state} />

@@ -5,6 +5,7 @@ import { D1BookingRepository, type TaskRecord } from "../data/repository";
 import { BookingTools } from "../domain/tools";
 import type { Env } from "../env";
 import { DepartureHoldService } from "../holds/service";
+import { gatewayForEnv, RazorpayCheckoutService } from "../razorpay/service";
 import { jsonError } from "./errors";
 import { enforceRateLimit, type SecurityVariables } from "./security";
 
@@ -46,7 +47,11 @@ function createTools(context: {
   return new BookingTools({
     repository: context.repository,
     model,
-    hold: new DepartureHoldService(context.env, context.repository)
+    hold: new DepartureHoldService(context.env, context.repository),
+    checkout: new RazorpayCheckoutService(
+      context.repository,
+      gatewayForEnv(context.env)
+    )
   });
 }
 

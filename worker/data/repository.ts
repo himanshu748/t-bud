@@ -32,6 +32,17 @@ export interface HoldRecord {
   status: "held" | "released" | "expired";
 }
 
+export interface OrderRecord {
+  id: string;
+  quoteId: string;
+  razorpayOrderId: string;
+  amount: number;
+  paymentId: string | null;
+  verificationStatus: "created" | "verified" | "failed";
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface AuditRow {
   id: string;
   task_id: string;
@@ -56,6 +67,12 @@ export interface BookingRepository {
   getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null>;
   saveHold(hold: HoldRecord): Promise<void>;
   getActiveHoldByQuote(quoteId: string): Promise<HoldRecord | null>;
+  getHold(id: string): Promise<HoldRecord | null>;
+  saveOrder(order: OrderRecord): Promise<void>;
+  getOrderByQuote(quoteId: string): Promise<OrderRecord | null>;
+  getOrderByGatewayId(razorpayOrderId: string): Promise<OrderRecord | null>;
+  markOrderVerified(razorpayOrderId: string, paymentId: string): Promise<void>;
+  recordPaymentEvent(eventId: string, eventType: string, processedAt: string): Promise<boolean>;
   appendAudit(event: AuditEvent): Promise<void>;
   listAudit(taskId: string): Promise<AuditEvent[]>;
 }
@@ -314,6 +331,119 @@ export class D1BookingRepository implements BookingRepository {
       expiresAt: row.expires_at,
       status: row.status
     };
+  }
+
+  async getHold(id: string): Promise<HoldRecord | null> {
+    const row = await this.db
+      .prepare(
+        `SELECT id, departure_id, quote_id, party_size, hold_token, expires_at, status
+         FROM holds WHERE id = ?`
+      )
+      .bind(id)
+      .first<{
+        id: string;
+        departure_id: string;
+        quote_id: string;
+        party_size: number;
+        hold_token: string;
+        expires_at: string;
+        status: HoldRecord["status"];
+      }>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      departureId: row.departure_id,
+      quoteId: row.quote_id,
+      partySize: row.party_size,
+      holdToken: row.hold_token,
+      expiresAt: row.expires_at,
+      status: row.status
+    };
+  }
+
+  async saveOrder(order: OrderRecord): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO orders
+          (id, quote_id, razorpay_order_id, amount, payment_id,
+           verification_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        order.id,
+        order.quoteId,
+        order.razorpayOrderId,
+        order.amount,
+        order.paymentId,
+        order.verificationStatus,
+        order.createdAt,
+        order.updatedAt
+      )
+      .run();
+  }
+
+  private async getOrder(where: "quote_id" | "razorpay_order_id", value: string) {
+    const row = await this.db
+      .prepare(
+        `SELECT id, quote_id, razorpay_order_id, amount, payment_id,
+                verification_status, created_at, updated_at
+         FROM orders WHERE ${where} = ?`
+      )
+      .bind(value)
+      .first<{
+        id: string;
+        quote_id: string;
+        razorpay_order_id: string;
+        amount: number;
+        payment_id: string | null;
+        verification_status: OrderRecord["verificationStatus"];
+        created_at: string;
+        updated_at: string;
+      }>();
+    if (!row) return null;
+    return {
+      id: row.id,
+      quoteId: row.quote_id,
+      razorpayOrderId: row.razorpay_order_id,
+      amount: row.amount,
+      paymentId: row.payment_id,
+      verificationStatus: row.verification_status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    } satisfies OrderRecord;
+  }
+
+  getOrderByQuote(quoteId: string): Promise<OrderRecord | null> {
+    return this.getOrder("quote_id", quoteId);
+  }
+
+  getOrderByGatewayId(razorpayOrderId: string): Promise<OrderRecord | null> {
+    return this.getOrder("razorpay_order_id", razorpayOrderId);
+  }
+
+  async markOrderVerified(razorpayOrderId: string, paymentId: string): Promise<void> {
+    await this.db
+      .prepare(
+        `UPDATE orders SET payment_id = ?, verification_status = 'verified', updated_at = ?
+         WHERE razorpay_order_id = ? AND verification_status != 'verified'`
+      )
+      .bind(paymentId, new Date().toISOString(), razorpayOrderId)
+      .run();
+  }
+
+  async recordPaymentEvent(
+    eventId: string,
+    eventType: string,
+    processedAt: string
+  ): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `INSERT OR IGNORE INTO payment_events
+          (gateway_event_id, event_type, processed_at) VALUES (?, ?, ?)`
+      )
+      .bind(eventId, eventType, processedAt)
+      .run();
+    return result.meta.changes === 1;
   }
 
   async appendAudit(event: AuditEvent): Promise<void> {

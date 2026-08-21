@@ -7,6 +7,9 @@ export interface Env {
   AI?: WorkersAiBinding;
   AI_MODEL?: string;
   DEPARTURE_HOLD: DurableObjectNamespace<DepartureHold>;
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
   QUOTE_RATE_LIMITER?: RateLimit;
   HOLD_RATE_LIMITER?: RateLimit;
   CHECKOUT_RATE_LIMITER?: RateLimit;
