@@ -119,18 +119,6 @@ export async function registerTBudTools(
       ),
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: (input) => invoke("/api/tools/request_hold", input)
-    },
-    {
-      name: "create_checkout",
-      title: "Prepare Razorpay checkout",
-      description:
-        "Prepare a payment order after explicit payment approval. The human still opens Razorpay to pay.",
-      inputSchema: objectSchema(
-        { quoteId: { type: "string", minLength: 1, maxLength: 160 } },
-        ["quoteId"]
-      ),
-      annotations: { readOnlyHint: false, untrustedContentHint: false },
-      execute: (input) => invoke("/api/tools/create_checkout", input)
     }
   ];
 

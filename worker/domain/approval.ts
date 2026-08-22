@@ -1,8 +1,9 @@
 import type { Quote } from "./types";
 
-export type ApprovalGate = "itinerary" | "payment";
+export type ApprovalGate = "itinerary" | "hold" | "payment";
 
 export interface Approval {
+  recordId?: string;
   quoteId: string;
   quoteVersion: number;
   actorSessionId: string;

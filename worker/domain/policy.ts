@@ -55,7 +55,7 @@ export function evaluateBundle(
     status: "eligible",
     items,
     total,
-    requiresHumanApproval: false
+    requiresHumanApproval: true
   };
 }
 

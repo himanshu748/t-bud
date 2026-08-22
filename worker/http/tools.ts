@@ -4,8 +4,8 @@ import { createWorkersAiModel } from "../ai/recommendation";
 import { D1BookingRepository, type TaskRecord } from "../data/repository";
 import { BookingTools } from "../domain/tools";
 import type { Env } from "../env";
+import type { HoldResult } from "../holds/DepartureHold";
 import { DepartureHoldService } from "../holds/service";
-import { gatewayForEnv, RazorpayCheckoutService } from "../razorpay/service";
 import { jsonError } from "./errors";
 import { enforceRateLimit, type SecurityVariables } from "./security";
 
@@ -47,11 +47,7 @@ function createTools(context: {
   return new BookingTools({
     repository: context.repository,
     model,
-    hold: new DepartureHoldService(context.env, context.repository),
-    checkout: new RazorpayCheckoutService(
-      context.repository,
-      gatewayForEnv(context.env)
-    )
+    hold: new DepartureHoldService(context.env, context.repository)
   });
 }
 
@@ -113,6 +109,16 @@ toolRoutes.post("/quote_bundle", async (context) => {
     updatedAt: createdAt
   };
   await repository.createTask(task);
+  await repository.appendAudit({
+    id: crypto.randomUUID(),
+    taskId: task.id,
+    actor: "buyer_agent",
+    action: "request.received",
+    target: task.id,
+    payload: { source: "webmcp", text: input.data.text },
+    result: "accepted",
+    createdAt
+  });
 
   try {
     const result = await createTools({ env: context.env, repository }).quoteBundle({
@@ -156,13 +162,26 @@ toolRoutes.post("/request_hold", async (context) => {
   const repository = new D1BookingRepository(context.env.DB);
   const quote = await repository.getQuote(input.data.quoteId);
   if (!quote) return jsonError(context, 404, "quote_not_found", "Quote not found");
-  const approval = await repository.getApproval(quote.id, "itinerary");
+  const approval = await repository.getApproval(quote.id, "hold");
   try {
-    const hold = await createTools({ env: context.env, repository }).requestHold({
+    const hold = (await createTools({ env: context.env, repository }).requestHold({
       quote,
       approval,
       sessionId
-    });
+    })) as HoldResult;
+    const task = await repository.getTask(quote.taskId);
+    if (task) {
+      const state = hold.status === "held"
+        ? "held"
+        : hold.status === "capacity_conflict"
+          ? "capacity_conflict"
+          : "expired";
+      await repository.updateTask({
+        ...task,
+        state,
+        updatedAt: new Date().toISOString()
+      });
+    }
     return context.json({ hold });
   } catch (error) {
     return jsonError(
@@ -175,35 +194,10 @@ toolRoutes.post("/request_hold", async (context) => {
 });
 
 toolRoutes.post("/create_checkout", async (context) => {
-  const input = await parseInput(
-    await context.req.json().catch(() => null),
-    QuoteIdInput
+  return jsonError(
+    context,
+    503,
+    "payments_disabled",
+    "Payment collection is not enabled for this pilot"
   );
-  if (!input.success) {
-    return jsonError(context, 400, "invalid_request", "A quote is required");
-  }
-  const sessionId = context.get("sessionId");
-  if (!(await enforceRateLimit(context.env.CHECKOUT_RATE_LIMITER, sessionId, context.req.path))) {
-    return jsonError(context, 429, "rate_limited", "Too many checkout requests");
-  }
-
-  const repository = new D1BookingRepository(context.env.DB);
-  const quote = await repository.getQuote(input.data.quoteId);
-  if (!quote) return jsonError(context, 404, "quote_not_found", "Quote not found");
-  const approval = await repository.getApproval(quote.id, "payment");
-  try {
-    const checkout = await createTools({ env: context.env, repository }).createCheckout({
-      quote,
-      approval,
-      sessionId
-    });
-    return context.json({ checkout });
-  } catch (error) {
-    return jsonError(
-      context,
-      409,
-      "checkout_not_allowed",
-      error instanceof Error ? error.message : "Checkout could not be created"
-    );
-  }
 });

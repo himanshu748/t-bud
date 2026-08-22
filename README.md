@@ -1,19 +1,19 @@
 # T-Bud
 
-T-Bud is a human-gated merchant booking agent for a Manali trekking operator. A buyer agent can discover the merchant through A2A v1.0, use the same booking capabilities through WebMCP and prepare a ₹19,600 bundle for four friends. It cannot hold seats or create checkout until the human approves each action separately.
+T-Bud is a human-gated merchant booking agent for a Manali trekking operator. A buyer agent can discover the merchant through A2A v1.0, use the same booking capabilities through WebMCP and prepare a quote from the merchant catalog. It cannot hold seats until a person approves the exact quote and then explicitly requests the temporary hold.
 
-## Demo scenario
+## Live pilot
 
-- Four occasional hikers
-- Manali, 2 days and 1 night
-- Hard budget of ₹20,000
-- Pickup and upgraded meals requested
-- Premium ₹20,800 proposal stopped by deterministic budget policy
-- Revised ₹19,600 proposal presented for approval
-- Durable Object seat hold after itinerary approval
-- Razorpay test checkout after a second payment approval
+- Choose a group size from 1 to 12
+- Set the hard budget ceiling
+- Include or remove Manali pickup and upgraded meals
+- Create a quote through the Worker-backed booking endpoint
+- Stop over-budget requests before approval
+- Approve the exact quote in the current browser session
+- Place a ten-minute Durable Object seat hold through a second human action
+- Keep payment collection disabled
 
-The landing page and demo use CSS-built interface graphics. No generated imagery is required.
+The pilot uses the local or deployed T-Bud D1 catalog. It is not connected to an external tour operator inventory system.
 
 ## Architecture
 
@@ -22,9 +22,10 @@ The landing page and demo use CSS-built interface graphics. No generated imagery
 - A2A v1.0 JSON-RPC endpoint and public Agent Card
 - Progressive WebMCP registration through `document.modelContext`
 - Workers AI for bounded intent and add-on recommendations, with deterministic fallback
-- D1 for catalog, quotes, approvals, orders and audit records
+- D1 for catalog, quotes, approvals, holds and audit records
 - Durable Objects for atomic departure capacity
-- Razorpay Orders, Standard Checkout signatures and signed webhook handling
+
+Payment code is retained for future integration work, but public payment routes are disabled. `/api/payments/*` and `/api/tools/create_checkout` return `503 payments_disabled`.
 
 AI output is advisory. Prices come from D1 and budget eligibility comes from deterministic integer-paise policy.
 
@@ -37,7 +38,7 @@ npx wrangler d1 migrations apply t-bud --local
 npm run dev:worker
 ```
 
-Open the URL printed by Wrangler. Local development uses the exact label `Simulated payment gateway` when Razorpay credentials are absent. It does not collect real money.
+Open the URL printed by Wrangler, then use `/book` for the live booking surface.
 
 Run the shipping checks:
 
@@ -46,7 +47,7 @@ npm run check
 npm run test:e2e
 ```
 
-## Cloudflare and Razorpay configuration
+## Cloudflare configuration
 
 Create or locate the production D1 database, then replace the placeholder `database_id` in `wrangler.production.jsonc`:
 
@@ -57,29 +58,19 @@ npx wrangler d1 create t-bud --location apac
 npx wrangler d1 migrations apply t-bud --remote -c wrangler.production.jsonc
 ```
 
-Set Razorpay test credentials without committing them:
-
-```bash
-npx wrangler secret put RAZORPAY_KEY_ID -c wrangler.production.jsonc
-npx wrangler secret put RAZORPAY_KEY_SECRET -c wrangler.production.jsonc
-npx wrangler secret put RAZORPAY_WEBHOOK_SECRET -c wrangler.production.jsonc
-```
-
 `wrangler.production.jsonc` binds Workers AI as `AI`, D1 as `DB` and the `DepartureHold` Durable Object as `DEPARTURE_HOLD`. Deploy with:
 
 ```bash
 npm run deploy
 ```
 
-Configure Razorpay to send payment webhooks to `/api/payments/webhook`. T-Bud verifies the `X-Razorpay-Signature` against the untouched raw body and deduplicates `x-razorpay-event-id` values.
-
 ## Five-minute judge walkthrough
 
-1. Open `/` and explain the bounded handshake: discover, quote, approve, hold, approve payment.
-2. Open `/demo`, send the four-friend request and pause on the ₹20,800 budget conflict.
-3. Review the ₹19,600 revision, approve the itinerary and hold four seats.
-4. Approve payment separately, open the simulated or Razorpay test checkout and complete verification.
-5. Reset, repeat to itinerary approval and choose `Simulate last-seat sellout` to show that approval is invalidated.
+1. Open `/` and explain the bounded handshake: discover, quote, approve and hold.
+2. Open `/book`, adjust group size, budget or add-ons and check live inventory.
+3. Lower the budget below the quote to show the deterministic stop.
+4. Restore the budget, approve the exact itinerary and place a temporary seat hold.
+5. Point out that no payment or checkout action exists.
 6. Open `/merchant` to inspect A2A, WebMCP, capacity and the append-only decision ledger.
 
 ## Public surfaces
@@ -90,7 +81,7 @@ Configure Razorpay to send payment webhooks to `/api/payments/webhook`. T-Bud ve
 - `/api/tools/get_availability`
 - `/api/tools/quote_bundle`
 - `/api/tools/request_hold`
-- `/api/tools/create_checkout`
+- `/api/bookings/approve-itinerary`
 - `/api/merchant/overview`
 
-Implementation details follow the [A2A v1.0 specification](https://github.com/a2aproject/A2A/blob/main/docs/specification.md), the [WebMCP proposal](https://github.com/webmachinelearning/webmcp/blob/main/index.bs) and [Razorpay Standard Checkout guidance](https://razorpay.com/docs/developer-tools/integrations/standard-checkout/).
+Implementation details follow the [A2A v1.0 specification](https://github.com/a2aproject/A2A/blob/main/docs/specification.md) and the [WebMCP proposal](https://github.com/webmachinelearning/webmcp/blob/main/index.bs).

@@ -17,9 +17,9 @@ it("shows the merchant's actual agent surfaces and inventory", async () => {
             "search_treks",
             "get_availability",
             "quote_bundle",
-            "request_hold",
-            "create_checkout"
+            "request_hold"
           ],
+          paymentsEnabled: false,
           departures: [
             {
               id: "dep_hampta_2026_09_12",

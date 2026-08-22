@@ -1,45 +1,157 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { Link } from "react-router-dom";
 import { BrandMark } from "../../components/BrandMark";
 import { Status } from "../../components/Status";
-import { demoApi, type DemoApi } from "../../lib/api";
+import { bookingApi, type BookingApi } from "../../lib/api";
 import { ApprovalDock } from "./ApprovalDock";
 import { BuyerPanel } from "./BuyerPanel";
 import { DecisionLedger } from "./DecisionLedger";
-import { demoReducer, createInitialDemoState, type DemoPhase } from "./demoReducer";
+import {
+  bookingIntentText,
+  createInitialDemoState,
+  demoReducer,
+  type BookingPhase,
+  type BookingReceipt,
+  type DemoPhase,
+  type DemoState
+} from "./demoReducer";
 import { MerchantPanel } from "./MerchantPanel";
 import { ProtocolRail } from "./ProtocolRail";
-import {
-  RazorpayCheckout,
-  type CheckoutDetails
-} from "./RazorpayCheckout";
 
 export interface DemoPageProps {
   initialPhase?: DemoPhase;
-  api?: DemoApi;
+  api?: BookingApi;
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "T-Bud could not complete that action";
+  return error instanceof Error
+    ? error.message
+    : "T-Bud could not complete that action";
 }
 
-export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps) {
-  const [state, dispatch] = useReducer(demoReducer, initialPhase, createInitialDemoState);
+const ACTIVE_BOOKING_KEY = "tbud.active-booking";
+
+function restoreDemoState(initialPhase: DemoPhase): DemoState {
+  const initial = createInitialDemoState(initialPhase);
+  if (initialPhase !== "idle" || typeof window === "undefined") return initial;
+
+  try {
+    const raw = window.sessionStorage.getItem(ACTIVE_BOOKING_KEY);
+    if (!raw) return initial;
+    const saved = JSON.parse(raw) as DemoState;
+    if (!saved.quote?.id || !saved.intent || !saved.phase) return initial;
+    return { ...saved, error: null, receiptError: null };
+  } catch {
+    window.sessionStorage.removeItem(ACTIVE_BOOKING_KEY);
+    return initial;
+  }
+}
+
+function stateFromReceipt(receipt: BookingReceipt): DemoState {
+  const phase: BookingPhase = receipt.quote.total > receipt.quote.budget
+    ? "budget_conflict"
+    : receipt.task.state === "hold_expired"
+      ? "failed"
+    : receipt.task.state === "held" && receipt.hold
+      ? "held"
+      : receipt.task.state === "itinerary_approved"
+        ? "itinerary_approved"
+        : "quote_ready";
+  const base = createInitialDemoState(phase);
+  const intent = {
+    ...base.intent,
+    partySize: receipt.quote.partySize,
+    budgetRupees: Math.round(receipt.quote.budget / 100),
+    pickup: receipt.quote.items.some((item) => item.id.includes("pickup")),
+    meals: receipt.quote.items.some((item) => item.id.includes("meals"))
+  };
+
+  return {
+    ...base,
+    phase,
+    pendingHumanAction: phase === "quote_ready"
+      ? "approve_itinerary"
+      : phase === "itinerary_approved"
+        ? "request_hold"
+        : null,
+    intent,
+    quote: {
+      id: receipt.quote.id,
+      version: receipt.quote.version,
+      total: receipt.quote.total,
+      budget: receipt.quote.budget,
+      expiresAt: receipt.quote.expiresAt,
+      departureId: receipt.quote.departureId,
+      items: receipt.quote.items
+    },
+    hold: receipt.hold
+      ? { id: receipt.hold.id, expiresAt: receipt.hold.expiresAt }
+      : null,
+    receipt,
+    receiptError: null,
+    error: phase === "failed"
+      ? "The seat hold expired. Check live inventory to prepare a fresh quote."
+      : null
+  };
+}
+
+export function DemoPage({
+  initialPhase = "idle",
+  api = bookingApi
+}: DemoPageProps) {
+  const [state, dispatch] = useReducer(
+    demoReducer,
+    initialPhase,
+    restoreDemoState
+  );
   const [busy, setBusy] = useState(false);
-  const [checkout, setCheckout] = useState<CheckoutDetails | null>(null);
-  const timers = useRef<number[]>([]);
 
-  useEffect(() => () => timers.current.forEach(window.clearTimeout), []);
+  useEffect(() => {
+    if (initialPhase !== "idle") return;
+    if (state.phase === "idle") {
+      window.sessionStorage.removeItem(ACTIVE_BOOKING_KEY);
+    } else if (state.quote) {
+      window.sessionStorage.setItem(ACTIVE_BOOKING_KEY, JSON.stringify(state));
+    }
+  }, [initialPhase, state]);
 
-  function startScenario() {
-    dispatch({ type: "SCENARIO_STARTED" });
-    timers.current.push(
-      window.setTimeout(() => dispatch({ type: "SEARCH_STARTED" }), 520),
-      window.setTimeout(
-        () => dispatch({ type: "PREMIUM_QUOTE_RECEIVED", total: 2_080_000 }),
-        1_180
-      )
-    );
+  useEffect(() => {
+    if (initialPhase !== "idle") return;
+    if (state.quote) {
+      void reconcileReceipt(state.quote.id);
+      return;
+    }
+    const quoteId = new URLSearchParams(window.location.search).get("quoteId");
+    if (!quoteId) return;
+    setBusy(true);
+    void api.getReceipt(quoteId)
+      .then((receipt) => dispatch({
+        type: "BOOKING_RESTORED",
+        state: stateFromReceipt(receipt)
+      }))
+      .catch((error: unknown) => dispatch({
+        type: "RECEIPT_FAILED",
+        message: errorMessage(error)
+      }))
+      .finally(() => setBusy(false));
+  }, []);
+
+  async function refreshReceipt(quoteId: string) {
+    try {
+      const receipt = await api.getReceipt(quoteId);
+      dispatch({ type: "RECEIPT_RECEIVED", receipt });
+    } catch (error) {
+      dispatch({ type: "RECEIPT_FAILED", message: errorMessage(error) });
+    }
+  }
+
+  async function reconcileReceipt(quoteId: string) {
+    try {
+      const receipt = await api.getReceipt(quoteId);
+      dispatch({ type: "BOOKING_RESTORED", state: stateFromReceipt(receipt) });
+    } catch (error) {
+      dispatch({ type: "RECEIPT_FAILED", message: errorMessage(error) });
+    }
   }
 
   async function runVerified(action: () => Promise<void>) {
@@ -53,61 +165,52 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
     }
   }
 
+  function prepareQuote() {
+    setBusy(true);
+    dispatch({ type: "QUOTE_REQUESTED" });
+    void api
+      .createQuote(bookingIntentText(state.intent))
+      .then(async (result) => {
+        dispatch({
+          type: "QUOTE_RECEIVED",
+          quote: result.quote,
+          policyStatus: result.policy.status,
+          intentSource: result.intentSource,
+          recommendationSource: result.recommendationSource
+        });
+        await refreshReceipt(result.quote.id);
+      })
+      .catch((error: unknown) => {
+        dispatch({
+          type: "REQUEST_FAILED",
+          message: errorMessage(error),
+          recoverTo: "idle"
+        });
+      })
+      .finally(() => setBusy(false));
+  }
+
   function approveItinerary() {
+    if (!state.quote) return;
     void runVerified(async () => {
-      const result = await api.approveItinerary(state.quote.id);
+      const result = await api.approveItinerary(state.quote!.id);
       dispatch({ type: "ITINERARY_APPROVED", approvedAt: result.approvedAt });
+      await refreshReceipt(state.quote!.id);
     });
   }
 
   function requestHold() {
+    if (!state.quote) return;
     void runVerified(async () => {
-      const result = await api.requestHold(state.quote.id);
-      dispatch({ type: "HOLD_CONFIRMED", holdId: result.holdId, expiresAt: result.expiresAt });
+      await api.approveHold(state.quote!.id);
+      const result = await api.requestHold(state.quote!.id);
+      dispatch({
+        type: "HOLD_CONFIRMED",
+        holdId: result.holdId,
+        expiresAt: result.expiresAt
+      });
+      await refreshReceipt(state.quote!.id);
     });
-  }
-
-  function approvePayment() {
-    if (!state.hold) return;
-    void runVerified(async () => {
-      const result = await api.approvePayment(state.hold!.id);
-      dispatch({ type: "PAYMENT_APPROVED", approvedAt: result.approvedAt });
-    });
-  }
-
-  function openCheckout() {
-    void runVerified(async () => {
-      const result = await api.createCheckout(state.quote.id);
-      setCheckout(result);
-      dispatch({ type: "CHECKOUT_OPENED" });
-    });
-  }
-
-  function verifyCheckout(input: {
-    orderId: string;
-    paymentId: string;
-    signature?: string;
-  }) {
-    void runVerified(async () => {
-      if (checkout?.simulated) {
-        await api.simulatePayment(input.orderId);
-      } else {
-        if (!input.signature) throw new Error("Razorpay signature is missing");
-        await api.verifyPayment({
-          orderId: input.orderId,
-          paymentId: input.paymentId,
-          signature: input.signature
-        });
-      }
-      dispatch({ type: "PAYMENT_VERIFIED" });
-    });
-  }
-
-  function reset() {
-    timers.current.forEach(window.clearTimeout);
-    timers.current = [];
-    setCheckout(null);
-    dispatch({ type: "RESET" });
   }
 
   return (
@@ -115,10 +218,10 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
       <header className="demo-header">
         <BrandMark />
         <div className="demo-header__context">
-          <span className="demo-header__label">Agent Handshake / Manali pilot</span>
+          <span className="demo-header__label">Live booking / Manali pilot</span>
           <Status tone="human">Human control: on</Status>
         </div>
-        <nav aria-label="Demo navigation">
+        <nav aria-label="Booking navigation">
           <Link to="/">Landing</Link>
           <Link to="/merchant">Merchant view</Link>
         </nav>
@@ -127,34 +230,38 @@ export function DemoPage({ initialPhase = "idle", api = demoApi }: DemoPageProps
       <main className="demo-main">
         <div className="demo-intro">
           <div>
-            <span className="instrument-label">Live bounded-commerce scenario</span>
-            <h1>Four friends. One hard budget. Two human gates.</h1>
+            <span className="instrument-label">Live merchant inventory</span>
+            <h1>Set the trip. Check the quote. Hold only when you say.</h1>
           </div>
-          <p>Watch buyer and merchant agents prepare a Manali trek. They can recommend and recover, but they cannot hold seats or open payment without you.</p>
+          <p>
+            Your request uses the same booking engine exposed to agents through A2A
+            and WebMCP. Catalog prices come from the merchant Worker, then capacity is
+            checked atomically when you approve a hold. Payment collection is disabled.
+          </p>
         </div>
 
         <div className="demo-workspace">
+          <BuyerPanel
+            state={state}
+            busy={busy}
+            onIntentChange={(intent) => dispatch({ type: "INTENT_UPDATED", intent })}
+          />
           <ApprovalDock
             state={state}
             busy={busy}
-            onStart={startScenario}
-            onReviewRevision={() => dispatch({ type: "REVISION_ACCEPTED" })}
+            onPrepareQuote={prepareQuote}
             onApproveItinerary={approveItinerary}
             onRequestHold={requestHold}
-            onSimulateSellout={() => dispatch({ type: "CAPACITY_CONFLICT" })}
-            onApprovePayment={approvePayment}
-            onOpenCheckout={openCheckout}
-            onReset={reset}
+            onReset={() => dispatch({ type: "RESET" })}
           />
-          <BuyerPanel state={state} />
           <ProtocolRail phase={state.phase} />
           <MerchantPanel state={state} />
-          {checkout ? (
-            <RazorpayCheckout checkout={checkout} onVerified={verifyCheckout} />
-          ) : null}
         </div>
 
-        <DecisionLedger state={state} />
+        <DecisionLedger
+          state={state}
+          onRetry={() => state.quote && void reconcileReceipt(state.quote.id)}
+        />
       </main>
     </div>
   );

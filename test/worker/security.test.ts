@@ -42,7 +42,7 @@ it("issues an opaque secure browser session cookie", async () => {
 
 it("rejects a cross-origin browser mutation", async () => {
   const response = await worker.fetch(
-    new Request("https://t-bud.test/api/demo/approve-itinerary", {
+    new Request("https://t-bud.test/api/bookings/approve-itinerary", {
       method: "POST",
       headers: {
         origin: "https://attacker.test",

@@ -55,7 +55,7 @@ export interface EligiblePolicyResult {
   status: "eligible";
   items: QuoteItem[];
   total: Money;
-  requiresHumanApproval: boolean;
+  requiresHumanApproval: true;
 }
 
 export interface BudgetConflictPolicyResult {

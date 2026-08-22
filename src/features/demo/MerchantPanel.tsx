@@ -3,88 +3,122 @@ import { formatInr } from "../../lib/format";
 import type { DemoState } from "./demoReducer";
 
 const phaseLabel: Record<DemoState["phase"], string> = {
-  idle: "Waiting for buyer agent",
-  discovering: "Publishing booking skill",
-  searching: "Checking catalog and capacity",
+  idle: "Waiting for your request",
+  quoting: "Reading catalog and capacity",
   budget_conflict: "Budget conflict",
   quote_ready: "Quote ready for approval",
   itinerary_approved: "Itinerary approved",
-  capacity_conflict: "Capacity conflict",
-  held: "Four seats held",
-  payment_approved: "Payment approved",
-  checkout: "Razorpay test checkout",
-  paid: "Booking confirmed",
+  held: "Seats held, payment disabled",
   failed: "Action stopped"
 };
 
 export function MerchantPanel({ state }: { state: DemoState }) {
+  const quote = state.quote;
   const conflict = state.phase === "budget_conflict";
-  const capacityConflict = state.phase === "capacity_conflict";
-  const holdActive = ["held", "payment_approved", "checkout", "paid"].includes(
-    state.phase
-  );
-  const preQuote = ["idle", "discovering", "searching"].includes(state.phase);
+  const held = state.phase === "held";
+
   return (
-    <section className="demo-panel demo-panel--merchant" aria-labelledby="merchant-panel-title">
+    <section
+      className="demo-panel demo-panel--merchant"
+      aria-labelledby="merchant-panel-title"
+    >
       <div className="demo-panel__heading">
-        <span className="instrument-label">02 / Merchant agent</span>
+        <span className="instrument-label">02 / Merchant Worker</span>
         <h2 id="merchant-panel-title">T-Bud</h2>
       </div>
 
       <div className="quote-head">
         <div>
-          <span className="instrument-label">Quote v{state.quote.version}</span>
+          <span className="instrument-label">
+            {quote ? `Quote v${quote.version}` : "Live quote"}
+          </span>
           <h3>{phaseLabel[state.phase]}</h3>
         </div>
-        <Status tone={conflict || capacityConflict ? "human" : state.phase === "paid" ? "success" : "protocol"}>
-          {conflict || capacityConflict ? "Review needed" : state.phase.replaceAll("_", " ")}
+        <Status tone={conflict ? "human" : held ? "success" : "protocol"}>
+          {conflict ? "Review needed" : state.phase.replaceAll("_", " ")}
         </Status>
       </div>
 
-      {preQuote ? (
+      {!quote ? (
         <div className="quote-awaiting">
-          <span>NO QUOTE YET</span>
-          <strong>The merchant agent has not prepared a bundle.</strong>
-          <p>Send the booking intent to discover the skill, query inventory and run the hard budget policy.</p>
+          <span>{state.phase === "quoting" ? "QUERY IN FLIGHT" : "NO QUOTE YET"}</span>
+          <strong>
+            {state.phase === "quoting"
+              ? "The Worker is checking authoritative merchant data."
+              : "Set a group size, budget and add-ons to begin."}
+          </strong>
+          <p>
+            The result is created by the live quote endpoint, not a scripted browser
+            sequence.
+          </p>
         </div>
       ) : (
         <>
+          {state.receipt ? (
+            <div className="live-verification">
+              <span><i aria-hidden="true" /> LIVE FROM WORKER</span>
+              <strong>
+                {new Intl.DateTimeFormat("en-GB", {
+                  weekday: "short",
+                  day: "2-digit",
+                  month: "short",
+                  timeZone: "Asia/Kolkata"
+                }).format(new Date(state.receipt.departure.startAt))}
+              </strong>
+              <strong>{state.receipt.departure.available} seats available now</strong>
+              <code>{state.receipt.task.state}</code>
+            </div>
+          ) : null}
           <div className="quote-items">
-            {state.quote.items.map((item) => (
+            {quote.items.map((item) => (
               <div className="quote-item" key={item.id}>
-                <div><strong>{item.name}</strong><span>{item.detail}</span></div>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>
+                    {item.quantity} × {formatInr(item.unitAmount)} · merchant catalog
+                  </span>
+                </div>
                 <span>{formatInr(item.amount)}</span>
               </div>
             ))}
           </div>
 
           <div className={`quote-total${conflict ? " quote-total--conflict" : ""}`}>
-            <div><span>Total</span><small>Budget {formatInr(state.quote.budget)}</small></div>
-            <strong>{formatInr(state.quote.total)}</strong>
+            <div>
+              <span>Total</span>
+              <small>Budget {formatInr(quote.budget)}</small>
+            </div>
+            <strong>{formatInr(quote.total)}</strong>
           </div>
         </>
       )}
 
-      {preQuote ? null : conflict ? (
+      {!quote ? null : conflict ? (
         <div className="policy-note policy-note--error">
           <span>POLICY / BUDGET</span>
-          <strong>{formatInr(state.quote.total - state.quote.budget)} over the hard ceiling</strong>
-          <p>Keep pickup. Replace premium camp meals with the eligible trail meal upgrade.</p>
+          <strong>{formatInr(quote.total - quote.budget)} over the hard ceiling</strong>
+          <p>Raise the budget or remove an add-on, then check inventory again.</p>
         </div>
-      ) : capacityConflict ? (
-        <div className="policy-note policy-note--error">
-          <span>CAPACITY / CONFLICT</span>
-          <strong>Last seats sold out</strong>
-          <p>The original approval is invalid. Another departure must be reviewed before any hold.</p>
+      ) : held ? (
+        <div className="policy-note policy-note--hold">
+          <span>HOLD / ACTIVE</span>
+          <strong>{state.intent.partySize} seats reserved temporarily</strong>
+          <p>
+            Hold {state.hold?.id.slice(0, 12)} expires at {state.hold
+              ? new Date(state.hold.expiresAt).toLocaleTimeString("en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                })
+              : "the quoted time"}. Payment collection is disabled.
+          </p>
         </div>
       ) : (
         <div className="policy-note">
           <span>POLICY / ELIGIBLE</span>
-          <strong>{formatInr(state.quote.budget - state.quote.total)} remains inside budget</strong>
+          <strong>{formatInr(quote.budget - quote.total)} remains inside budget</strong>
           <p>
-            {holdActive
-              ? "Four seats are held. Checkout remains bound to the separate H2 payment approval."
-              : "Catalog price and four-seat availability were checked. No hold exists until H1 approval."}
+            Catalog price and departure eligibility were checked. Final capacity is
+            checked atomically only after both human gates are completed.
           </p>
         </div>
       )}

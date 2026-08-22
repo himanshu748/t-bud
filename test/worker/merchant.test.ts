@@ -11,6 +11,7 @@ it("reports the public agent contract and Durable Object capacity", async () => 
   const body = await response.json<{
     agentCard: { protocolVersion: string; skills: Array<{ id: string }> };
     webmcpTools: string[];
+    paymentsEnabled: boolean;
     departures: Array<{ available: number; capacity: number }>;
   }>();
 
@@ -19,6 +20,7 @@ it("reports the public agent contract and Durable Object capacity", async () => 
     protocolVersion: "1.0",
     skills: [{ id: "book_manali_trek" }]
   });
-  expect(body.webmcpTools).toContain("create_checkout");
+  expect(body.webmcpTools).not.toContain("create_checkout");
+  expect(body.paymentsEnabled).toBe(false);
   expect(body.departures[0]).toMatchObject({ capacity: 4, available: 4 });
 });

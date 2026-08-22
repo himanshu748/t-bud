@@ -13,5 +13,10 @@ it("reports the T-Bud service as healthy", async () => {
   await waitOnExecutionContext(ctx);
 
   expect(response.status).toBe(200);
-  await expect(response.json()).resolves.toEqual({ ok: true, service: "t-bud" });
+  await expect(response.json()).resolves.toEqual({
+    ok: true,
+    service: "t-bud",
+    mode: "live_pilot",
+    paymentsEnabled: false
+  });
 });

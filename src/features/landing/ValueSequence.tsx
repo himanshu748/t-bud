@@ -6,15 +6,15 @@ const values = [
     tone: "base"
   },
   {
-    amount: "₹20,800",
-    title: "Premium bundle exceeds budget",
-    copy: "Pickup and premium meals push the request ₹800 over its hard limit.",
-    tone: "rejected"
+    amount: "+₹3,600",
+    title: "Requested add-ons",
+    copy: "Manali pickup and upgraded trail meals come from the merchant catalog.",
+    tone: "base"
   },
   {
     amount: "₹19,600",
-    title: "Human-approved revision",
-    copy: "The requested pickup stays. A lower meal upgrade brings the total back inside budget.",
+    title: "Live eligible quote",
+    copy: "The budget policy leaves ₹400 headroom before the itinerary reaches a human.",
     tone: "approved"
   }
 ] as const;
@@ -22,8 +22,9 @@ const values = [
 export function ValueSequence() {
   return (
     <div className="value-sequence">
-      {values.map((value) => (
+      {values.map((value, index) => (
         <article className={`value-step value-step--${value.tone}`} key={value.amount}>
+          <span className="value-step__index">0{index + 1}</span>
           <div className="value-step__number">{value.amount}</div>
           <h3>{value.title}</h3>
           <p>{value.copy}</p>

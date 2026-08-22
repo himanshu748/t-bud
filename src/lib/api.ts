@@ -1,25 +1,38 @@
-export interface DemoApi {
-  approveItinerary(quoteId: string): Promise<{ approvedAt: string }>;
-  requestHold(quoteId: string): Promise<{ holdId: string; expiresAt: string }>;
-  approvePayment(holdId: string): Promise<{ approvedAt: string }>;
-  createCheckout(quoteId: string): Promise<{
-    orderId: string;
-    keyId: string;
-    amount: number;
-    currency: "INR";
-    simulated: boolean;
+import type {
+  BookingQuote,
+  BookingReceipt
+} from "../features/demo/demoReducer";
+
+export interface BookingApi {
+  createQuote(text: string): Promise<{
+    quote: BookingQuote;
+    policy: { status: "eligible" | "budget_conflict" };
+    intentSource: "workers_ai" | "rules_fallback";
+    recommendationSource: "workers_ai" | "rules_fallback";
   }>;
-  verifyPayment(input: {
-    orderId: string;
-    paymentId: string;
-    signature: string;
-  }): Promise<{ verified: boolean }>;
-  simulatePayment(orderId: string): Promise<{ verified: boolean }>;
+  approveItinerary(quoteId: string): Promise<{ approvedAt: string }>;
+  approveHold(quoteId: string): Promise<{ approvedAt: string }>;
+  requestHold(quoteId: string): Promise<{ holdId: string; expiresAt: string }>;
+  getReceipt(quoteId: string): Promise<BookingReceipt>;
 }
+
+async function getJson<T>(path: string): Promise<T> {
+  const response = await fetch(path, { credentials: "same-origin" });
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: { message?: string } }
+    | null;
+  if (!response.ok) {
+    throw new Error(payload?.error?.message ?? "T-Bud could not verify the server receipt");
+  }
+  return payload as T;
+}
+
+export type DemoApi = BookingApi;
 
 async function requestJson<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const response = await fetch(path, {
     method: "POST",
+    credentials: "same-origin",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -34,20 +47,38 @@ async function requestJson<T>(path: string, body: Record<string, unknown>): Prom
   return payload as T;
 }
 
-export const demoApi: DemoApi = {
+export const bookingApi: BookingApi = {
+  createQuote: (text) => requestJson("/api/tools/quote_bundle", { text }),
   approveItinerary: (quoteId) =>
-    requestJson("/api/demo/approve-itinerary", { quoteId }),
-  requestHold: (quoteId) => requestJson("/api/demo/holds", { quoteId }),
-  approvePayment: (holdId) =>
-    requestJson("/api/demo/approve-payment", { holdId }),
-  createCheckout: (quoteId) =>
-    requestJson("/api/payments/order", { quoteId }),
-  verifyPayment: (input) =>
-    requestJson("/api/payments/verify", {
-      razorpay_order_id: input.orderId,
-      razorpay_payment_id: input.paymentId,
-      razorpay_signature: input.signature
-    }),
-  simulatePayment: (orderId) =>
-    requestJson("/api/payments/simulate", { orderId })
+    requestJson("/api/bookings/approve-itinerary", { quoteId }),
+  approveHold: (quoteId) =>
+    requestJson("/api/bookings/approve-hold", { quoteId }),
+  getReceipt: (quoteId) =>
+    getJson(`/api/bookings/${encodeURIComponent(quoteId)}/receipt`),
+  requestHold: async (quoteId) => {
+    const result = await requestJson<{
+      hold: {
+        status: "held" | "capacity_conflict" | "expired";
+        holdId?: string;
+        expiresAt?: string;
+      };
+    }>("/api/tools/request_hold", { quoteId });
+    if (
+      result.hold.status !== "held" ||
+      !result.hold.holdId ||
+      !result.hold.expiresAt
+    ) {
+      throw new Error(
+        result.hold.status === "capacity_conflict"
+          ? "Those seats just sold out. Prepare a new quote."
+          : "The quote expired before the hold was created."
+      );
+    }
+    return {
+      holdId: result.hold.holdId,
+      expiresAt: result.hold.expiresAt
+    };
+  }
 };
+
+export const demoApi = bookingApi;

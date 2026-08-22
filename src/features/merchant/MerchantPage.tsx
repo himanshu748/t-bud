@@ -9,6 +9,7 @@ interface MerchantOverview {
     skills: Array<{ id: string; name: string }>;
   };
   webmcpTools: string[];
+  paymentsEnabled: boolean;
   departures: Array<{
     id: string;
     trekName: string;
@@ -74,11 +75,11 @@ export function MerchantPage() {
         <BrandMark />
         <div className="demo-header__context">
           <span className="demo-header__label">Merchant field console</span>
-          <Status tone="success">System bounded</Status>
+          <Status tone="success">System bounded · payment off</Status>
         </div>
         <nav aria-label="Merchant navigation">
           <Link to="/">Landing</Link>
-          <Link to="/demo">Live demo</Link>
+          <Link to="/book">Live booking</Link>
         </nav>
       </header>
 
@@ -90,7 +91,8 @@ export function MerchantPage() {
           </div>
           <p>
             Inspect public protocol surfaces, departure capacity and every consequential
-            action. Discovery can run alone. Holds and money cannot.
+            action. Discovery can run alone. Holds require direct consent. Payment
+            collection is unavailable in this pilot.
           </p>
         </section>
 

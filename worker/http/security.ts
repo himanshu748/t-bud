@@ -86,15 +86,15 @@ export async function enforceRateLimit(
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' https://checkout.razorpay.com",
-  "style-src 'self'",
-  "img-src 'self' data: https://*.razorpay.com",
-  "connect-src 'self' https://*.razorpay.com",
-  "frame-src https://*.razorpay.com",
-  "font-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' https://fonts.googleapis.com",
+  "img-src 'self' data:",
+  "connect-src 'self'",
+  "frame-src 'none'",
+  "font-src 'self' https://fonts.gstatic.com",
   "object-src 'none'",
   "base-uri 'self'",
-  "form-action 'self' https://*.razorpay.com",
+  "form-action 'self'",
   "frame-ancestors 'none'"
 ].join("; ");
 

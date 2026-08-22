@@ -23,7 +23,11 @@ it("rejects the premium bundle above ₹20,000", () => {
 it("accepts pickup and upgraded meals at ₹19,600", () => {
   const result = evaluateBundle(bookingRequest, trek, [pickup, budgetMeals]);
 
-  expect(result).toMatchObject({ status: "eligible", total: 1_960_000 });
+  expect(result).toMatchObject({
+    status: "eligible",
+    total: 1_960_000,
+    requiresHumanApproval: true
+  });
 });
 
 it("proposes the smallest eligible change without silently removing pickup", () => {

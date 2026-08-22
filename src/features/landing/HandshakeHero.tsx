@@ -17,7 +17,7 @@ export function HandshakeHero() {
       <section className="handshake__panel handshake__panel--buyer">
         <div>
           <p className="instrument-label">Buyer agent</p>
-          <div className="handshake__agent">TrailMate</div>
+          <div className="handshake__agent">Traveller agent</div>
         </div>
         <div className="handshake__request">
           <strong>2-day Manali trek · 4 friends · under ₹20,000</strong>
@@ -36,7 +36,7 @@ export function HandshakeHero() {
       <section className="handshake__panel handshake__panel--merchant">
         <div>
           <p className="instrument-label">Merchant agent</p>
-          <div className="handshake__agent">T-Bud</div>
+          <div className="handshake__agent">T-Bud agent</div>
         </div>
         <div className="handshake__evidence">
           <strong>Final bundle ₹19,600</strong>
@@ -53,7 +53,7 @@ export function HandshakeHero() {
       <div className="handshake__gate">
         <span className="handshake__gate-mark" aria-hidden="true">H1</span>
         <div className="handshake__gate-copy">
-          <strong>Awaiting human approval</strong>
+          <strong>Awaiting the group</strong>
           <span>Exact itinerary, total and expiry must be approved</span>
         </div>
         <span className="handshake__gate-state">Agent paused</span>

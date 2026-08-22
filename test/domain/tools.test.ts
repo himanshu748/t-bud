@@ -71,13 +71,13 @@ describe("BookingTools", () => {
     expect(repo.saveQuote).toHaveBeenCalledOnce();
   });
 
-  it("rejects a hold before an itinerary approval", async () => {
+  it("rejects a hold before a separate seat-hold approval", async () => {
     const hold = vi.fn();
     const tools = new BookingTools({ repository: repository(), hold: { create: hold } });
 
     await expect(
       tools.requestHold({ quote: quote(), approval: null, sessionId: "session-a" })
-    ).rejects.toThrow("itinerary approval required");
+    ).rejects.toThrow("seat-hold approval required");
     expect(hold).not.toHaveBeenCalled();
   });
 
@@ -88,7 +88,7 @@ describe("BookingTools", () => {
       quoteId: approvedQuote.id,
       quoteVersion: approvedQuote.version,
       actorSessionId: "session-b",
-      gate: "itinerary",
+      gate: "hold",
       digest: await quoteDigest(approvedQuote, "session-b"),
       approvedAt: new Date().toISOString()
     };
@@ -97,6 +97,33 @@ describe("BookingTools", () => {
     await expect(
       tools.requestHold({ quote: approvedQuote, approval, sessionId: "session-a" })
     ).rejects.toThrow("approval does not match this session and quote");
+    expect(hold).not.toHaveBeenCalled();
+  });
+
+  it("rejects an over-budget quote even with a matching hold approval", async () => {
+    const hold = vi.fn();
+    const overBudgetQuote = {
+      ...quote(),
+      budget: money(1_900_000),
+      total: money(1_960_000)
+    };
+    const approval: Approval = {
+      quoteId: overBudgetQuote.id,
+      quoteVersion: overBudgetQuote.version,
+      actorSessionId: "session-a",
+      gate: "hold",
+      digest: await quoteDigest(overBudgetQuote, "session-a"),
+      approvedAt: new Date().toISOString()
+    };
+    const tools = new BookingTools({ repository: repository(), hold: { create: hold } });
+
+    await expect(
+      tools.requestHold({
+        quote: overBudgetQuote,
+        approval,
+        sessionId: "session-a"
+      })
+    ).rejects.toThrow("exceeds the approved budget ceiling");
     expect(hold).not.toHaveBeenCalled();
   });
 });

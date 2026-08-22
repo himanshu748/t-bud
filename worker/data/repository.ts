@@ -75,6 +75,7 @@ export interface BookingRepository {
   saveApproval(id: string, approval: Approval): Promise<void>;
   getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null>;
   saveHold(hold: HoldRecord): Promise<void>;
+  updateHoldStatus(id: string, status: HoldRecord["status"]): Promise<void>;
   getActiveHoldByQuote(quoteId: string): Promise<HoldRecord | null>;
   getHold(id: string): Promise<HoldRecord | null>;
   saveOrder(order: OrderRecord): Promise<void>;
@@ -279,11 +280,12 @@ export class D1BookingRepository implements BookingRepository {
   async getApproval(quoteId: string, gate: ApprovalGate): Promise<Approval | null> {
     const row = await this.db
       .prepare(
-        `SELECT quote_id, quote_version, gate, actor_session_id, digest, approved_at
+        `SELECT id, quote_id, quote_version, gate, actor_session_id, digest, approved_at
          FROM approvals WHERE quote_id = ? AND gate = ?`
       )
       .bind(quoteId, gate)
       .first<{
+        id: string;
         quote_id: string;
         quote_version: number;
         gate: ApprovalGate;
@@ -293,6 +295,7 @@ export class D1BookingRepository implements BookingRepository {
       }>();
     if (!row) return null;
     return {
+      recordId: row.id,
       quoteId: row.quote_id,
       quoteVersion: row.quote_version,
       gate: row.gate,
@@ -318,6 +321,16 @@ export class D1BookingRepository implements BookingRepository {
         hold.expiresAt,
         hold.status
       )
+      .run();
+  }
+
+  async updateHoldStatus(
+    id: string,
+    status: HoldRecord["status"]
+  ): Promise<void> {
+    await this.db
+      .prepare("UPDATE holds SET status = ? WHERE id = ?")
+      .bind(status, id)
       .run();
   }
 

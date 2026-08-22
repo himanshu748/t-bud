@@ -4,6 +4,7 @@ import { createWorkersAiModel } from "../ai/recommendation";
 import { D1BookingRepository, type TaskRecord } from "../data/repository";
 import { BookingTools } from "../domain/tools";
 import type { Env } from "../env";
+import { enforceRateLimit } from "../http/security";
 import { AGENT_CARD_ETAG, createAgentCard } from "./agent-card";
 import type { A2ATask, A2ATaskState, JsonRpcFailure, JsonRpcSuccess } from "./types";
 
@@ -38,6 +39,7 @@ const SendMessageParams = z
       .object({
         acceptedOutputModes: z.array(z.string()).max(8).optional(),
         historyLength: z.number().int().min(0).optional(),
+        blocking: z.boolean().optional(),
         returnImmediately: z.boolean().optional()
       })
       .strict()
@@ -104,7 +106,7 @@ function toA2ATask(record: TaskRecord): A2ATask {
     state === "TASK_STATE_INPUT_REQUIRED"
       ? payload.summary ?? "Review the prepared booking before any hold or payment action."
       : state === "TASK_STATE_CANCELED"
-        ? "The booking task was canceled before checkout."
+        ? "The booking task was canceled before any seat hold."
         : undefined;
 
   return {
@@ -142,6 +144,14 @@ function versionError(id: string | number) {
     "VERSION_NOT_SUPPORTED",
     { supportedVersions: "1.0" }
   );
+}
+
+function formatInr(paise: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0
+  }).format(paise / 100);
 }
 
 export function agentCardResponse(context: Context<AppContext>): Response {
@@ -196,6 +206,22 @@ a2aRoutes.post("/", async (context) => {
         400
       );
     }
+    const clientKey =
+      context.req.header("cf-connecting-ip") ??
+      context.req.header("x-forwarded-for") ??
+      "anonymous-a2a-client";
+    if (
+      !(await enforceRateLimit(
+        context.env.QUOTE_RATE_LIMITER,
+        clientKey,
+        "/a2a/v1/SendMessage"
+      ))
+    ) {
+      return context.json(
+        rpcFailure(id, -32029, "Too many quote requests", "RATE_LIMITED"),
+        429
+      );
+    }
 
     const createdAt = new Date().toISOString();
     const task: TaskRecord = {
@@ -219,8 +245,8 @@ a2aRoutes.post("/", async (context) => {
       });
       const summary =
         result.policy.status === "budget_conflict"
-          ? `The proposed bundle is ₹${result.policy.overBy / 100} over budget and needs human review.`
-          : "A ₹19,600 trek bundle is ready. Human itinerary approval is required before holding four seats.";
+          ? `The proposed bundle is ${formatInr(result.policy.overBy)} over budget and cannot be approved.`
+          : `A ${formatInr(result.quote.total)} trek bundle for ${result.quote.partySize} travellers is ready. Separate human approvals are required for the itinerary and seat hold.`;
       const artifact = {
         artifactId: `quote-${result.quote.id}`,
         name: "T-Bud trek quote",

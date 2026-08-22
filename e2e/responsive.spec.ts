@@ -4,9 +4,9 @@ import { expect, test } from "@playwright/test";
 const widths = [360, 768, 1024, 1440];
 
 for (const width of widths) {
-  test(`landing and demo recompose without overflow at ${width}px`, async ({ page }) => {
+  test(`landing and booking recompose without overflow at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    for (const route of ["/", "/demo", "/merchant"]) {
+    for (const route of ["/", "/book", "/merchant"]) {
       await page.goto(route);
       await expect(page.locator("main h1")).toBeVisible();
       expect(
@@ -15,14 +15,14 @@ for (const width of widths) {
         )
       ).toBe(true);
     }
-    await page.goto("/demo");
-    const box = await page.getByRole("button", { name: "Send booking intent" }).boundingBox();
+    await page.goto("/book");
+    const box = await page.getByRole("button", { name: "Check live inventory" }).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
   });
 }
 
 test("primary routes have no serious or critical accessibility violations", async ({ page }) => {
-  for (const route of ["/", "/demo", "/merchant"]) {
+  for (const route of ["/", "/book", "/merchant"]) {
     await page.goto(route);
     await expect(page.locator("main h1")).toBeVisible();
     const results = await new AxeBuilder({ page }).analyze();

@@ -137,8 +137,14 @@ export class BookingTools {
     approval: Approval | null;
     sessionId: string;
   }): Promise<unknown> {
-    if (!input.approval || input.approval.gate !== "itinerary") {
-      throw new Error("itinerary approval required");
+    if (input.quote.total > input.quote.budget) {
+      throw new Error("the quote exceeds the approved budget ceiling");
+    }
+    if (input.quote.status !== "ready") {
+      throw new Error("the quote is not eligible for a seat hold");
+    }
+    if (!input.approval || input.approval.gate !== "hold") {
+      throw new Error("seat-hold approval required");
     }
     if (!(await approvalMatches(input.approval, input.quote, input.sessionId))) {
       throw new Error("approval does not match this session and quote");

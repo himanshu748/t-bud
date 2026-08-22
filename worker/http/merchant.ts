@@ -10,8 +10,7 @@ const webmcpTools = [
   "search_treks",
   "get_availability",
   "quote_bundle",
-  "request_hold",
-  "create_checkout"
+  "request_hold"
 ];
 
 export const merchantRoutes = new Hono<AppContext>();
@@ -40,6 +39,7 @@ merchantRoutes.get("/overview", async (context) => {
       skills: card.skills.map((skill) => ({ id: skill.id, name: skill.name }))
     },
     webmcpTools,
+    paymentsEnabled: false,
     departures,
     tasks: tasks.map((task) => ({
       id: task.id,

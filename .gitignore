@@ -12,3 +12,6 @@ test-results/
 playwright-report/
 *.log
 outputs/
+output/
+.brand-preview/
+*.bak

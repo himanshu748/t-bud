@@ -27,7 +27,8 @@ it("creates, retrieves and cancels a human-gated booking task", async () => {
           text: "2-day Manali trek for four friends under ₹20,000 with pickup and upgraded meals"
         }
       ]
-    }
+    },
+    configuration: { blocking: true }
   });
   const sentBody = await sent.json<{
     result: {
@@ -42,6 +43,17 @@ it("creates, retrieves and cancels a human-gated booking task", async () => {
 
   expect(sent.status).toBe(200);
   expect(sentBody.result.task.status.state).toBe("TASK_STATE_INPUT_REQUIRED");
+  expect(sentBody.result.task.status).toMatchObject({
+    message: {
+      parts: [
+        {
+          text: expect.stringContaining(
+            "Separate human approvals are required for the itinerary and seat hold."
+          )
+        }
+      ]
+    }
+  });
   expect(sentBody.result.task.contextId).toBeTruthy();
   expect(sentBody.result.task.artifacts[0]).toMatchObject({
     name: "T-Bud trek quote",
