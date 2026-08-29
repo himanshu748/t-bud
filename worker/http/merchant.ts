@@ -10,7 +10,8 @@ const webmcpTools = [
   "search_treks",
   "get_availability",
   "quote_bundle",
-  "request_hold"
+  "request_hold",
+  "create_checkout"
 ];
 
 export const merchantRoutes = new Hono<AppContext>();
@@ -39,7 +40,8 @@ merchantRoutes.get("/overview", async (context) => {
       skills: card.skills.map((skill) => ({ id: skill.id, name: skill.name }))
     },
     webmcpTools,
-    paymentsEnabled: false,
+    paymentsEnabled: true,
+    paymentMode: context.env.RAZORPAY_KEY_ID ? "test_keys" : "simulated",
     departures,
     tasks: tasks.map((task) => ({
       id: task.id,

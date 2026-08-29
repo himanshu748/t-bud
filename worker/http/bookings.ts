@@ -26,13 +26,23 @@ bookingRoutes.get("/:quoteId/receipt", async (context) => {
     return jsonError(context, 404, "quote_not_found", "Quote not found");
   }
 
-  const [task, departures, itineraryApproval, holdApproval, storedHold, audit] =
-    await Promise.all([
+  const [
+    task,
+    departures,
+    itineraryApproval,
+    holdApproval,
+    paymentApproval,
+    storedHold,
+    order,
+    audit
+  ] = await Promise.all([
       repository.getTask(quote.taskId),
       repository.listDepartures(quote.trekId),
       repository.getApproval(quote.id, "itinerary"),
       repository.getApproval(quote.id, "hold"),
+      repository.getApproval(quote.id, "payment"),
       repository.getActiveHoldByQuote(quote.id),
+      repository.getOrderByQuote(quote.id),
       repository.listAudit(quote.taskId)
     ]);
   const departure = departures.find((candidate) => candidate.id === quote.departureId);
@@ -106,8 +116,18 @@ bookingRoutes.get("/:quoteId/receipt", async (context) => {
     },
     approvals: {
       itinerary: approvalReceipt(itineraryApproval),
-      hold: approvalReceipt(holdApproval)
+      hold: approvalReceipt(holdApproval),
+      payment: approvalReceipt(paymentApproval)
     },
+    order: order
+      ? {
+          razorpayOrderId: order.razorpayOrderId,
+          amount: order.amount,
+          paymentId: order.paymentId,
+          verificationStatus: order.verificationStatus,
+          simulated: order.razorpayOrderId.startsWith("order_sim_")
+        }
+      : null,
     hold: effectiveHold
       ? {
           id: effectiveHold.id,
@@ -215,6 +235,93 @@ bookingRoutes.post("/approve-itinerary", async (context) => {
       updatedAt: approvedAt
     });
   }
+
+  return context.json({ approvedAt });
+});
+
+bookingRoutes.post("/approve-payment", async (context) => {
+  const input = QuoteApprovalInput.safeParse(
+    await context.req.json().catch(() => null)
+  );
+  if (!input.success) {
+    return jsonError(context, 400, "invalid_request", "A valid quote is required");
+  }
+
+  const repository = new D1BookingRepository(context.env.DB);
+  const quote = await repository.getQuote(input.data.quoteId);
+  if (!quote) {
+    return jsonError(context, 404, "quote_not_found", "Quote not found");
+  }
+  if (quote.total > quote.budget) {
+    return jsonError(
+      context,
+      409,
+      "budget_conflict",
+      "This quote exceeds the hard budget ceiling. Change the request and prepare a new quote."
+    );
+  }
+
+  const sessionId = context.get("sessionId");
+  if (
+    !(await enforceRateLimit(
+      context.env.CHECKOUT_RATE_LIMITER,
+      sessionId,
+      context.req.path
+    ))
+  ) {
+    await repository.appendAudit({
+      id: crypto.randomUUID(),
+      taskId: quote.taskId,
+      actor: "system",
+      action: "security.rate_limited",
+      target: "approve-payment",
+      payload: { route: context.req.path },
+      result: "rejected",
+      createdAt: new Date().toISOString()
+    });
+    return jsonError(context, 429, "rate_limited", "Too many approval attempts");
+  }
+
+  const holdApproval = await repository.getApproval(quote.id, "hold");
+  if (!holdApproval || !(await approvalMatches(holdApproval, quote, sessionId))) {
+    return jsonError(
+      context,
+      409,
+      "hold_approval_required",
+      "Approve and place the seat hold before authorizing payment."
+    );
+  }
+
+  const hold = await repository.getActiveHoldByQuote(quote.id);
+  if (!hold || hold.status !== "held" || Date.parse(hold.expiresAt) <= Date.now()) {
+    return jsonError(
+      context,
+      409,
+      "hold_required",
+      "An active seat hold is required before payment can be authorized."
+    );
+  }
+
+  const approvedAt = new Date().toISOString();
+  const approval: Approval = {
+    quoteId: quote.id,
+    quoteVersion: quote.version,
+    actorSessionId: sessionId,
+    gate: "payment",
+    digest: await quoteDigest(quote, sessionId),
+    approvedAt
+  };
+  await repository.saveApproval(crypto.randomUUID(), approval);
+  await repository.appendAudit({
+    id: crypto.randomUUID(),
+    taskId: quote.taskId,
+    actor: "human",
+    action: "approval.payment_recorded",
+    target: quote.id,
+    payload: { quoteVersion: quote.version, total: quote.total },
+    result: "accepted",
+    createdAt: approvedAt
+  });
 
   return context.json({ approvedAt });
 });

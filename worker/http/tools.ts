@@ -6,6 +6,7 @@ import { BookingTools } from "../domain/tools";
 import type { Env } from "../env";
 import type { HoldResult } from "../holds/DepartureHold";
 import { DepartureHoldService } from "../holds/service";
+import { gatewayForEnv, RazorpayCheckoutService } from "../razorpay/service";
 import { jsonError } from "./errors";
 import { enforceRateLimit, type SecurityVariables } from "./security";
 
@@ -47,7 +48,11 @@ function createTools(context: {
   return new BookingTools({
     repository: context.repository,
     model,
-    hold: new DepartureHoldService(context.env, context.repository)
+    hold: new DepartureHoldService(context.env, context.repository),
+    checkout: new RazorpayCheckoutService(
+      context.repository,
+      gatewayForEnv(context.env)
+    )
   });
 }
 
@@ -194,10 +199,35 @@ toolRoutes.post("/request_hold", async (context) => {
 });
 
 toolRoutes.post("/create_checkout", async (context) => {
-  return jsonError(
-    context,
-    503,
-    "payments_disabled",
-    "Payment collection is not enabled for this pilot"
+  const input = await parseInput(
+    await context.req.json().catch(() => null),
+    QuoteIdInput
   );
+  if (!input.success) {
+    return jsonError(context, 400, "invalid_request", "A quote is required");
+  }
+  const sessionId = context.get("sessionId");
+  if (!(await enforceRateLimit(context.env.CHECKOUT_RATE_LIMITER, sessionId, context.req.path))) {
+    return jsonError(context, 429, "rate_limited", "Too many checkout requests");
+  }
+
+  const repository = new D1BookingRepository(context.env.DB);
+  const quote = await repository.getQuote(input.data.quoteId);
+  if (!quote) return jsonError(context, 404, "quote_not_found", "Quote not found");
+  const approval = await repository.getApproval(quote.id, "payment");
+  try {
+    const checkout = await createTools({ env: context.env, repository }).createCheckout({
+      quote,
+      approval,
+      sessionId
+    });
+    return context.json({ checkout });
+  } catch (error) {
+    return jsonError(
+      context,
+      409,
+      "checkout_not_allowed",
+      error instanceof Error ? error.message : "Checkout could not be created"
+    );
+  }
 });

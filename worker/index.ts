@@ -2,9 +2,9 @@ import { Hono } from "hono";
 import { a2aRoutes, agentCardResponse } from "./a2a/routes";
 import type { Env } from "./env";
 import { bookingRoutes } from "./http/bookings";
-import { jsonError } from "./http/errors";
 import { toolRoutes } from "./http/tools";
 import { merchantRoutes } from "./http/merchant";
+import { paymentRoutes } from "./razorpay/routes";
 import {
   sameOriginMutations,
   secureHeaders,
@@ -25,20 +25,14 @@ app.get("/api/health", (context) =>
     ok: true,
     service: "t-bud" as const,
     mode: "live_pilot" as const,
-    paymentsEnabled: false
+    paymentsEnabled: true,
+    paymentMode: context.env.RAZORPAY_KEY_ID ? ("test_keys" as const) : ("simulated" as const)
   })
 );
 app.route("/api/bookings", bookingRoutes);
 app.route("/api/tools", toolRoutes);
 app.route("/api/merchant", merchantRoutes);
-app.all("/api/payments/*", (context) =>
-  jsonError(
-    context,
-    503,
-    "payments_disabled",
-    "Payment collection is not enabled for this pilot"
-  )
-);
+app.route("/api/payments", paymentRoutes);
 app.get("/.well-known/agent-card.json", agentCardResponse);
 app.route("/a2a/v1", a2aRoutes);
 

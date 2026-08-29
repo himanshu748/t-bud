@@ -84,13 +84,19 @@ export async function enforceRateLimit(
   return result.success;
 }
 
+// Razorpay Checkout loads its own script and renders the payment sheet in an
+// iframe on api.razorpay.com, so those origins have to be named explicitly.
+const RAZORPAY_SCRIPT = "https://checkout.razorpay.com";
+const RAZORPAY_API = "https://api.razorpay.com";
+const RAZORPAY_TELEMETRY = "https://lumberjack.razorpay.com";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self'",
+  `script-src 'self' ${RAZORPAY_SCRIPT}`,
   "style-src 'self' https://fonts.googleapis.com",
-  "img-src 'self' data:",
-  "connect-src 'self'",
-  "frame-src 'none'",
+  `img-src 'self' data: ${RAZORPAY_SCRIPT} ${RAZORPAY_API}`,
+  `connect-src 'self' ${RAZORPAY_API} ${RAZORPAY_TELEMETRY}`,
+  `frame-src ${RAZORPAY_API} ${RAZORPAY_SCRIPT}`,
   "font-src 'self' https://fonts.gstatic.com",
   "object-src 'none'",
   "base-uri 'self'",
