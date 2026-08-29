@@ -17,6 +17,7 @@ import {
 } from "./demoReducer";
 import { MerchantPanel } from "./MerchantPanel";
 import { ProtocolRail } from "./ProtocolRail";
+import { RazorpayCheckout } from "./RazorpayCheckout";
 
 export interface DemoPageProps {
   initialPhase?: DemoPhase;
@@ -50,8 +51,12 @@ function restoreDemoState(initialPhase: DemoPhase): DemoState {
 function stateFromReceipt(receipt: BookingReceipt): DemoState {
   const phase: BookingPhase = receipt.quote.total > receipt.quote.budget
     ? "budget_conflict"
+    : receipt.order?.verificationStatus === "verified" || receipt.task.state === "paid"
+      ? "paid"
     : receipt.task.state === "hold_expired"
       ? "failed"
+    : receipt.order && receipt.approvals.payment
+      ? "payment_approved"
     : receipt.task.state === "held" && receipt.hold
       ? "held"
       : receipt.task.state === "itinerary_approved"
@@ -73,7 +78,9 @@ function stateFromReceipt(receipt: BookingReceipt): DemoState {
       ? "approve_itinerary"
       : phase === "itinerary_approved"
         ? "request_hold"
-        : null,
+        : phase === "held"
+          ? "approve_payment"
+          : null,
     intent,
     quote: {
       id: receipt.quote.id,
@@ -86,6 +93,14 @@ function stateFromReceipt(receipt: BookingReceipt): DemoState {
     },
     hold: receipt.hold
       ? { id: receipt.hold.id, expiresAt: receipt.hold.expiresAt }
+      : null,
+    checkout: null,
+    payment: receipt.order?.verificationStatus === "verified" && receipt.order.paymentId
+      ? {
+          orderId: receipt.order.razorpayOrderId,
+          paymentId: receipt.order.paymentId,
+          simulated: receipt.order.simulated
+        }
       : null,
     receipt,
     receiptError: null,
@@ -213,6 +228,38 @@ export function DemoPage({
     });
   }
 
+  function approvePayment() {
+    if (!state.quote) return;
+    void runVerified(async () => {
+      const approval = await api.approvePayment(state.quote!.id);
+      const checkout = await api.createCheckout(state.quote!.id);
+      dispatch({
+        type: "PAYMENT_APPROVED",
+        approvedAt: approval.approvedAt,
+        checkout
+      });
+      await refreshReceipt(state.quote!.id);
+    });
+  }
+
+  function completePayment(result: {
+    orderId: string;
+    paymentId: string;
+    signature?: string;
+  }) {
+    if (!state.quote) return;
+    void runVerified(async () => {
+      await api.verifyPayment(result);
+      dispatch({
+        type: "PAYMENT_VERIFIED",
+        orderId: result.orderId,
+        paymentId: result.paymentId,
+        simulated: !result.signature
+      });
+      await refreshReceipt(state.quote!.id);
+    });
+  }
+
   return (
     <div className="demo-shell">
       <header className="demo-header">
@@ -236,7 +283,8 @@ export function DemoPage({
           <p>
             Your request uses the same booking engine exposed to agents through A2A
             and WebMCP. Catalog prices come from the merchant Worker, then capacity is
-            checked atomically when you approve a hold. Payment collection is disabled.
+            checked atomically when you approve a hold. Payment runs on Razorpay
+            Checkout, and only after you authorize it as a third, separate action.
           </p>
         </div>
 
@@ -252,11 +300,16 @@ export function DemoPage({
             onPrepareQuote={prepareQuote}
             onApproveItinerary={approveItinerary}
             onRequestHold={requestHold}
+            onApprovePayment={approvePayment}
             onReset={() => dispatch({ type: "RESET" })}
           />
           <ProtocolRail phase={state.phase} />
           <MerchantPanel state={state} />
         </div>
+
+        {state.checkout && state.phase === "payment_approved" ? (
+          <RazorpayCheckout checkout={state.checkout} onVerified={completePayment} />
+        ) : null}
 
         <DecisionLedger
           state={state}

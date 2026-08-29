@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatInr } from "../../lib/format";
-
-export interface CheckoutDetails {
-  orderId: string;
-  keyId: string;
-  amount: number;
-  currency: "INR";
-  simulated: boolean;
-}
+import type { CheckoutDetails } from "./demoReducer";
 
 interface RazorpayCheckoutProps {
   checkout: CheckoutDetails;

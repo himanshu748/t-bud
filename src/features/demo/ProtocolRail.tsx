@@ -6,7 +6,9 @@ const steps = [
   ["policy", "budget policy"],
   ["approval", "human gate H1"],
   ["hold", "human gate H2"],
-  ["reserved", "hold active"]
+  ["reserved", "hold active"],
+  ["payment", "human gate H3"],
+  ["verified", "razorpay verified"]
 ] as const;
 
 function phaseRank(phase: DemoPhase): number {
@@ -17,6 +19,8 @@ function phaseRank(phase: DemoPhase): number {
     quote_ready: 3,
     itinerary_approved: 4,
     held: 5,
+    payment_approved: 6,
+    paid: 7,
     failed: 0
   };
   return map[phase];

@@ -7,6 +7,8 @@ export type BookingPhase =
   | "quote_ready"
   | "itinerary_approved"
   | "held"
+  | "payment_approved"
+  | "paid"
   | "failed";
 
 export type DemoPhase = BookingPhase;
@@ -14,7 +16,16 @@ export type DemoPhase = BookingPhase;
 export type PendingHumanAction =
   | "approve_itinerary"
   | "request_hold"
+  | "approve_payment"
   | null;
+
+export interface CheckoutDetails {
+  orderId: string;
+  keyId: string;
+  amount: number;
+  currency: "INR";
+  simulated: boolean;
+}
 
 export interface BookingIntent {
   location: "Manali";
@@ -69,7 +80,15 @@ export interface BookingReceipt {
   approvals: {
     itinerary: { approvedAt: string; receiptId: string } | null;
     hold: { approvedAt: string; receiptId: string } | null;
+    payment: { approvedAt: string; receiptId: string } | null;
   };
+  order: {
+    razorpayOrderId: string;
+    amount: number;
+    paymentId: string | null;
+    verificationStatus: "pending" | "verified" | "failed";
+    simulated: boolean;
+  } | null;
   hold: {
     id: string;
     status: string;
@@ -101,6 +120,8 @@ export interface DemoState {
   intent: BookingIntent;
   quote: BookingQuote | null;
   hold: { id: string; expiresAt: string } | null;
+  checkout: CheckoutDetails | null;
+  payment: { orderId: string; paymentId: string; simulated: boolean } | null;
   error: string | null;
   receipt: BookingReceipt | null;
   receiptError: string | null;
@@ -119,6 +140,8 @@ export type DemoAction =
     }
   | { type: "ITINERARY_APPROVED"; approvedAt: string }
   | { type: "HOLD_CONFIRMED"; holdId: string; expiresAt: string }
+  | { type: "PAYMENT_APPROVED"; approvedAt: string; checkout: CheckoutDetails }
+  | { type: "PAYMENT_VERIFIED"; orderId: string; paymentId: string; simulated: boolean }
   | { type: "RECEIPT_RECEIVED"; receipt: BookingReceipt }
   | { type: "RECEIPT_FAILED"; message: string }
   | { type: "BOOKING_RESTORED"; state: DemoState }
@@ -213,6 +236,7 @@ function quoteEntry(quote: BookingQuote, eligible: boolean): LedgerEntry {
 function pendingAction(phase: BookingPhase): PendingHumanAction {
   if (phase === "quote_ready") return "approve_itinerary";
   if (phase === "itinerary_approved") return "request_hold";
+  if (phase === "held") return "approve_payment";
   return null;
 }
 
@@ -225,7 +249,7 @@ function seededLedger(
   const entries: LedgerEntry[] = [requestEntry(intent)];
   if (phase === "quoting" || !quote) return entries;
   entries.push(quoteEntry(quote, phase !== "budget_conflict"));
-  if (["itinerary_approved", "held"].includes(phase)) {
+  if (["itinerary_approved", "held", "payment_approved", "paid"].includes(phase)) {
     entries.push({
       id: "itinerary-approval",
       actor: "human",
@@ -234,13 +258,31 @@ function seededLedger(
       tone: "success"
     });
   }
-  if (phase === "held") {
+  if (["held", "payment_approved", "paid"].includes(phase)) {
     entries.push({
       id: "hold",
       actor: "human",
       label: "Seat hold requested",
-      detail: `${intent.partySize} seats held · payment collection remains disabled`,
+      detail: `${intent.partySize} seats held · Razorpay order not created yet`,
       tone: "human"
+    });
+  }
+  if (["payment_approved", "paid"].includes(phase)) {
+    entries.push({
+      id: "payment-approval",
+      actor: "human",
+      label: "Human authorized payment",
+      detail: `Razorpay order created for ${formatInr(quote.total)}`,
+      tone: "human"
+    });
+  }
+  if (phase === "paid") {
+    entries.push({
+      id: "payment",
+      actor: "system",
+      label: "Razorpay payment verified",
+      detail: "HMAC signature checked server-side before the booking was marked paid",
+      tone: "success"
     });
   }
   return entries;
@@ -258,9 +300,11 @@ export function createInitialDemoState(phase: BookingPhase = "idle"): DemoState 
     pendingHumanAction: pendingAction(phase),
     intent,
     quote,
-    hold: phase === "held"
+    hold: ["held", "payment_approved", "paid"].includes(phase)
       ? { id: "hold_live", expiresAt: "2026-09-12T12:10:00.000Z" }
       : null,
+    checkout: null,
+    payment: null,
     error: null,
     receipt: null,
     receiptError: null,
@@ -286,6 +330,8 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         intent: action.intent,
         quote: null,
         hold: null,
+        checkout: null,
+        payment: null,
         error: null,
         receipt: null,
         receiptError: null,
@@ -298,6 +344,8 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         pendingHumanAction: null,
         quote: null,
         hold: null,
+        checkout: null,
+        payment: null,
         error: null,
         receipt: null,
         receiptError: null,
@@ -314,6 +362,8 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
           pendingHumanAction: eligible ? "approve_itinerary" : null,
           quote: action.quote,
           hold: null,
+          checkout: null,
+          payment: null,
           error: null,
           receipt: null,
           receiptError: null
@@ -348,7 +398,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
         {
           ...state,
           phase: "held",
-          pendingHumanAction: null,
+          pendingHumanAction: "approve_payment",
           hold: { id: action.holdId, expiresAt: action.expiresAt },
           error: null
         },
@@ -356,8 +406,49 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
           id: "hold",
           actor: "human",
           label: "Seat hold created",
-          detail: `${state.intent.partySize} seats held until ${new Date(action.expiresAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} · payment disabled`,
+          detail: `${state.intent.partySize} seats held until ${new Date(action.expiresAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} · no Razorpay order yet`,
           tone: "human"
+        }
+      );
+    case "PAYMENT_APPROVED":
+      if (!state.quote) return state;
+      return append(
+        state,
+        {
+          ...state,
+          phase: "payment_approved",
+          pendingHumanAction: null,
+          checkout: action.checkout,
+          error: null
+        },
+        {
+          id: "payment-approval",
+          actor: "human",
+          label: "Human authorized payment",
+          detail: `Razorpay order ${action.checkout.orderId} created for ${formatInr(state.quote.total)}${action.checkout.simulated ? " · simulated gateway" : " · test mode"}`,
+          tone: "human"
+        }
+      );
+    case "PAYMENT_VERIFIED":
+      return append(
+        state,
+        {
+          ...state,
+          phase: "paid",
+          pendingHumanAction: null,
+          payment: {
+            orderId: action.orderId,
+            paymentId: action.paymentId,
+            simulated: action.simulated
+          },
+          error: null
+        },
+        {
+          id: "payment",
+          actor: "system",
+          label: "Razorpay payment verified",
+          detail: `Payment ${action.paymentId} checked against the order signature server-side`,
+          tone: "success"
         }
       );
     case "RECEIPT_RECEIVED":
@@ -402,7 +493,7 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
             id: "reset",
             actor: "human",
             label: "Booking request cleared",
-            detail: "No payment was started. Any existing hold will expire automatically.",
+            detail: "Any existing hold will expire automatically. No further payment can be taken on this quote.",
             tone: "human"
           }
         ]

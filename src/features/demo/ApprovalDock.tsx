@@ -6,6 +6,7 @@ interface ApprovalDockProps {
   onPrepareQuote(): void;
   onApproveItinerary(): void;
   onRequestHold(): void;
+  onApprovePayment(): void;
   onReset(): void;
 }
 
@@ -20,15 +21,22 @@ function actionFor(props: ApprovalDockProps) {
   if (state.phase === "itinerary_approved") {
     return [`Hold ${state.intent.partySize} seats for 10 minutes`, props.onRequestHold] as const;
   }
+  if (state.phase === "held") {
+    return ["Authorize payment with Razorpay", props.onApprovePayment] as const;
+  }
   return null;
 }
 
 export function ApprovalDock(props: ApprovalDockProps) {
   const { state, busy } = props;
   const action = actionFor(props);
-  const gate = state.phase === "itinerary_approved" || state.phase === "held"
-    ? "H2"
-    : "H1";
+  const gate = state.phase === "held" ||
+    state.phase === "payment_approved" ||
+    state.phase === "paid"
+    ? "H3"
+    : state.phase === "itinerary_approved"
+      ? "H2"
+      : "H1";
   const waiting = state.phase === "quoting";
   const busyLabel = waiting
     ? "Querying merchant Worker…"
@@ -36,7 +44,9 @@ export function ApprovalDock(props: ApprovalDockProps) {
       ? "Recording H1 approval…"
       : state.phase === "itinerary_approved"
         ? "Reserving seats atomically…"
-        : "Verifying server state…";
+        : state.phase === "held"
+          ? "Creating the Razorpay order…"
+          : "Verifying server state…";
 
   return (
     <section className="approval-dock" aria-label="Human approval controls">
@@ -46,17 +56,22 @@ export function ApprovalDock(props: ApprovalDockProps) {
         <strong>
           {waiting
             ? "Checking merchant catalog and capacity"
-            : state.phase === "held"
-              ? "Seats held, payment disabled"
-              : state.phase === "budget_conflict"
+            : state.phase === "paid"
+              ? "Payment verified, booking confirmed"
+              : state.phase === "payment_approved"
+                ? "Complete the payment in Razorpay Checkout"
+              : state.phase === "held"
+                ? "Seats held. Payment needs a separate approval"
+                : state.phase === "budget_conflict"
                 ? "Change the request before continuing"
                 : action
                   ? "T-Bud is paused until you act"
                   : "No consequential action is available"}
         </strong>
         <p>
-          Quotes and holds are bound to this browser session. No payment order can be
-          created in the current pilot.
+          {state.phase === "paid"
+            ? "The Razorpay signature was verified on the server before this booking was marked paid."
+            : "Quotes, holds and payment orders are bound to this browser session. T-Bud never creates a Razorpay order without this approval."}
         </p>
       </div>
       {state.error ? (

@@ -8,7 +8,9 @@ const phaseLabel: Record<DemoState["phase"], string> = {
   budget_conflict: "Budget conflict",
   quote_ready: "Quote ready for approval",
   itinerary_approved: "Itinerary approved",
-  held: "Seats held, payment disabled",
+  held: "Seats held, awaiting payment approval",
+  payment_approved: "Razorpay order ready",
+  paid: "Payment verified",
   failed: "Action stopped"
 };
 
@@ -16,6 +18,8 @@ export function MerchantPanel({ state }: { state: DemoState }) {
   const quote = state.quote;
   const conflict = state.phase === "budget_conflict";
   const held = state.phase === "held";
+  const paid = state.phase === "paid";
+  const ordered = state.phase === "payment_approved";
 
   return (
     <section
@@ -34,7 +38,7 @@ export function MerchantPanel({ state }: { state: DemoState }) {
           </span>
           <h3>{phaseLabel[state.phase]}</h3>
         </div>
-        <Status tone={conflict ? "human" : held ? "success" : "protocol"}>
+        <Status tone={conflict ? "human" : paid || held ? "success" : "protocol"}>
           {conflict ? "Review needed" : state.phase.replaceAll("_", " ")}
         </Status>
       </div>
@@ -99,6 +103,25 @@ export function MerchantPanel({ state }: { state: DemoState }) {
           <strong>{formatInr(quote.total - quote.budget)} over the hard ceiling</strong>
           <p>Raise the budget or remove an add-on, then check inventory again.</p>
         </div>
+      ) : paid ? (
+        <div className="policy-note policy-note--paid">
+          <span>RAZORPAY / VERIFIED</span>
+          <strong>{formatInr(quote.total)} captured{state.payment?.simulated ? " in the simulated gateway" : " in test mode"}</strong>
+          <p>
+            Payment {state.payment?.paymentId} was verified against order{" "}
+            {state.payment?.orderId} with an HMAC signature check on the Worker before
+            the booking was marked paid.
+          </p>
+        </div>
+      ) : ordered ? (
+        <div className="policy-note policy-note--hold">
+          <span>RAZORPAY / ORDER CREATED</span>
+          <strong>Order {state.checkout?.orderId} is open for {formatInr(quote.total)}</strong>
+          <p>
+            The order was created only after you authorized payment. Complete or close
+            Checkout: the seat hold stays yours until it expires.
+          </p>
+        </div>
       ) : held ? (
         <div className="policy-note policy-note--hold">
           <span>HOLD / ACTIVE</span>
@@ -109,7 +132,7 @@ export function MerchantPanel({ state }: { state: DemoState }) {
                   hour: "2-digit",
                   minute: "2-digit"
                 })
-              : "the quoted time"}. Payment collection is disabled.
+              : "the quoted time"}. No Razorpay order exists until you authorize one.
           </p>
         </div>
       ) : (

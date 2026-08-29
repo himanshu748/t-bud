@@ -13,7 +13,10 @@ const actionLabel: Record<string, string> = {
   "approval.itinerary_recorded": "Itinerary approval recorded",
   "approval.hold_recorded": "Seat-hold approval recorded",
   "hold.created": "Atomic seat hold committed",
-  "hold.expired": "Seat hold expired and capacity released"
+  "hold.expired": "Seat hold expired and capacity released",
+  "approval.payment_recorded": "Payment approval recorded",
+  "checkout.order_created": "Razorpay order created",
+  "payment.verified": "Razorpay signature verified"
 };
 
 function departureDate(value: string): string {
@@ -100,6 +103,14 @@ export function DecisionLedger({ state, onRetry }: DecisionLedgerProps) {
             <div>
               <span>H2 / Seat hold</span>
               <code>{receipt.approvals.hold?.receiptId ?? "Awaiting human"}</code>
+            </div>
+            <div>
+              <span>H3 / Payment</span>
+              <code>{receipt.approvals.payment?.receiptId ?? "Awaiting human"}</code>
+            </div>
+            <div>
+              <span>Razorpay order</span>
+              <code>{receipt.order?.razorpayOrderId ?? "Not created"}</code>
             </div>
             <div>
               <span>Worker state</span>

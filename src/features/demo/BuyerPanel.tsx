@@ -111,9 +111,9 @@ export function BuyerPanel({ state, busy, onIntentChange }: BuyerPanelProps) {
         <span>Agent may</span>
         <strong>Discover · compare · prepare</strong>
         <span>Human only</span>
-        <strong>Approve itinerary · place hold</strong>
-        <span>Unavailable</span>
-        <strong>Payment collection</strong>
+        <strong>Approve itinerary · place hold · authorize payment</strong>
+        <span>Never</span>
+        <strong>Charge without an approval that matches this quote</strong>
       </div>
     </section>
   );

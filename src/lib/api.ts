@@ -1,6 +1,7 @@
 import type {
   BookingQuote,
-  BookingReceipt
+  BookingReceipt,
+  CheckoutDetails
 } from "../features/demo/demoReducer";
 
 export interface BookingApi {
@@ -13,6 +14,13 @@ export interface BookingApi {
   approveItinerary(quoteId: string): Promise<{ approvedAt: string }>;
   approveHold(quoteId: string): Promise<{ approvedAt: string }>;
   requestHold(quoteId: string): Promise<{ holdId: string; expiresAt: string }>;
+  approvePayment(quoteId: string): Promise<{ approvedAt: string }>;
+  createCheckout(quoteId: string): Promise<CheckoutDetails>;
+  verifyPayment(input: {
+    orderId: string;
+    paymentId: string;
+    signature?: string;
+  }): Promise<{ verified: true }>;
   getReceipt(quoteId: string): Promise<BookingReceipt>;
 }
 
@@ -53,6 +61,17 @@ export const bookingApi: BookingApi = {
     requestJson("/api/bookings/approve-itinerary", { quoteId }),
   approveHold: (quoteId) =>
     requestJson("/api/bookings/approve-hold", { quoteId }),
+  approvePayment: (quoteId) =>
+    requestJson("/api/bookings/approve-payment", { quoteId }),
+  createCheckout: (quoteId) => requestJson("/api/payments/order", { quoteId }),
+  verifyPayment: ({ orderId, paymentId, signature }) =>
+    signature
+      ? requestJson("/api/payments/verify", {
+          razorpay_order_id: orderId,
+          razorpay_payment_id: paymentId,
+          razorpay_signature: signature
+        })
+      : requestJson("/api/payments/simulate", { orderId }),
   getReceipt: (quoteId) =>
     getJson(`/api/bookings/${encodeURIComponent(quoteId)}/receipt`),
   requestHold: async (quoteId) => {
