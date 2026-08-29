@@ -4,7 +4,7 @@ _Status: active_
 
 ## Product truth
 
-T-Bud lets agents prepare a real merchant-backed trek quote while people retain control of itinerary approval and temporary seat holds. Payment collection is intentionally unavailable in the pilot.
+T-Bud lets agents prepare a real merchant-backed trek quote while people retain control of itinerary approval, temporary seat holds and payment. Money moves only through Razorpay, and only after a human authorization that matches the exact quote.
 
 ## Palette
 
@@ -26,7 +26,7 @@ Direct, controlled and transparent. State what the agent can do, where it stops 
 
 ## Landing direction
 
-- Product truth: machine-speed preparation, human-controlled commitment.
+- Product truth: machine-speed preparation, human-controlled commitment, human-authorized payment.
 - Audience: hackathon judges, merchants and travellers evaluating trust.
 - Desired feeling: premium, operational and unmistakably human-gated.
 - Primary action: start a live quote.
@@ -34,5 +34,5 @@ Direct, controlled and transparent. State what the agent can do, where it stops 
 - Primary archetype: editorial narrative.
 - Secondary influence: technical instrument.
 - Page silhouette: oversized editorial opening, full-width product proof, then alternating evidence bands.
-- Signature moment: the handshake visibly stops at the human gate.
+- Signature moment: the handshake visibly stops at each human gate, including the one in front of Razorpay.
 - Avoid: generic AI gradients, floating dashboard cards and repetitive three-column feature grids.
