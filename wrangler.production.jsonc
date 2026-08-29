@@ -44,7 +44,7 @@
     {
       "binding": "DB",
       "database_name": "t-bud",
-      "database_id": "11111111-1111-1111-1111-111111111111",
+      "database_id": "5b286f09-645d-45c4-84f8-9a7adc68d3e0",
       "migrations_dir": "migrations"
     }
   ]
