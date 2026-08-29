@@ -151,9 +151,18 @@ export function DemoPage({
       .finally(() => setBusy(false));
   }, []);
 
-  async function refreshReceipt(quoteId: string) {
+  async function refreshReceipt(
+    quoteId: string,
+    settlesWhen?: (receipt: BookingReceipt) => boolean
+  ) {
     try {
-      const receipt = await api.getReceipt(quoteId);
+      let receipt = await api.getReceipt(quoteId);
+      // Remote D1 can answer before the write that triggered this refresh is
+      // readable, which would show evidence that contradicts the headline.
+      for (let attempt = 0; settlesWhen && !settlesWhen(receipt) && attempt < 4; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+        receipt = await api.getReceipt(quoteId);
+      }
       dispatch({ type: "RECEIPT_RECEIVED", receipt });
     } catch (error) {
       dispatch({ type: "RECEIPT_FAILED", message: errorMessage(error) });
@@ -256,7 +265,10 @@ export function DemoPage({
         paymentId: result.paymentId,
         simulated: !result.signature
       });
-      await refreshReceipt(state.quote!.id);
+      await refreshReceipt(
+        state.quote!.id,
+        (receipt) => receipt.order?.verificationStatus === "verified"
+      );
     });
   }
 
