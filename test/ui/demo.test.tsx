@@ -63,7 +63,8 @@ const receipt = {
     capacity: 4,
     available: 4
   },
-  approvals: { itinerary: null, hold: null },
+  approvals: { itinerary: null, hold: null, payment: null },
+  order: null,
   hold: null,
   audit: [
     {
@@ -96,6 +97,17 @@ function api(overrides: Partial<BookingApi> = {}): BookingApi {
       holdId: "hold_live",
       expiresAt: "2026-08-21T10:10:00.000Z"
     }),
+    approvePayment: vi.fn().mockResolvedValue({
+      approvedAt: "2026-08-21T10:02:00.000Z"
+    }),
+    createCheckout: vi.fn().mockResolvedValue({
+      orderId: "order_sim_test",
+      keyId: "rzp_test_simulated",
+      amount: quote.total,
+      currency: "INR",
+      simulated: true
+    }),
+    verifyPayment: vi.fn().mockResolvedValue({ verified: true }),
     getReceipt: vi.fn().mockResolvedValue(receipt),
     ...overrides
   };
@@ -220,7 +232,7 @@ describe("live booking page", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Seats held, payment disabled" })
+      screen.getByRole("heading", { name: "Seats held, awaiting payment approval" })
     ).toBeVisible();
     await waitFor(() => expect(client.getReceipt).toHaveBeenCalledWith(quote.id));
   });
@@ -288,7 +300,7 @@ describe("live booking page", () => {
     ).toBeEnabled();
   });
 
-  it("ends with a temporary hold and no payment action", async () => {
+  it("holds seats without creating a Razorpay order until a human authorizes it", async () => {
     const user = userEvent.setup();
     const client = api();
     render(
@@ -308,8 +320,34 @@ describe("live booking page", () => {
       expect(client.requestHold).toHaveBeenCalledWith("quote_live_v1")
     );
     expect(
-      await screen.findByRole("heading", { name: "Seats held, payment disabled" })
+      await screen.findByRole("heading", { name: "Seats held, awaiting payment approval" })
     ).toBeVisible();
-    expect(screen.queryByRole("button", { name: /pay|checkout/i })).not.toBeInTheDocument();
+    expect(client.approvePayment).not.toHaveBeenCalled();
+    expect(client.createCheckout).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: /authorize payment with razorpay/i })
+    );
+
+    await waitFor(() =>
+      expect(client.approvePayment).toHaveBeenCalledWith("quote_live_v1")
+    );
+    await waitFor(() =>
+      expect(client.createCheckout).toHaveBeenCalledWith("quote_live_v1")
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /complete simulated payment/i })
+    );
+
+    await waitFor(() =>
+      expect(client.verifyPayment).toHaveBeenCalledWith({
+        orderId: "order_sim_test",
+        paymentId: "pay_simulated"
+      })
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Payment verified" })
+    ).toBeVisible();
   });
 });

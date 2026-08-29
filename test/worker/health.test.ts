@@ -17,6 +17,7 @@ it("reports the T-Bud service as healthy", async () => {
     ok: true,
     service: "t-bud",
     mode: "live_pilot",
-    paymentsEnabled: false
+    paymentsEnabled: true,
+    paymentMode: "simulated"
   });
 });

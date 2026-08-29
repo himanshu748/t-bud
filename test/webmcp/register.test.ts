@@ -11,7 +11,7 @@ describe("registerTBudTools", () => {
     ).resolves.toEqual({ registered: [], supported: false });
   });
 
-  it("registers four narrowly described booking tools with payment omitted", async () => {
+  it("registers five narrowly described booking tools including the gated checkout", async () => {
     const registered: ModelContextTool[] = [];
     const registerTool = vi.fn(async (tool: ModelContextTool) => {
       registered.push(tool);
@@ -29,7 +29,8 @@ describe("registerTBudTools", () => {
         "search_treks",
         "get_availability",
         "quote_bundle",
-        "request_hold"
+        "request_hold",
+        "create_checkout"
       ]
     });
     expect(registered.map((tool) => tool.name)).toEqual(result.registered);
@@ -43,7 +44,10 @@ describe("registerTBudTools", () => {
       annotations: { readOnlyHint: false, untrustedContentHint: false }
     });
     expect(registered[3].description).toContain("approved quote");
-    expect(registered.map((tool) => tool.name)).not.toContain("create_checkout");
+    expect(registered[4].description).toContain("already approved for payment");
+    expect(registered[4]).toMatchObject({
+      annotations: { readOnlyHint: false, untrustedContentHint: false }
+    });
   });
 
   it("routes tool execution through same-origin HTTP endpoints", async () => {
