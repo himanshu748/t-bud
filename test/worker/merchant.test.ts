@@ -22,5 +22,5 @@ it("reports the public agent contract and Durable Object capacity", async () => 
   });
   expect(body.webmcpTools).toContain("create_checkout");
   expect(body.paymentsEnabled).toBe(true);
-  expect(body.departures[0]).toMatchObject({ capacity: 4, available: 4 });
+  expect(body.departures[0]).toMatchObject({ capacity: 12, available: 12 });
 });

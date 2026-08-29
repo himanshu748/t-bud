@@ -6,7 +6,7 @@ test("quote, hold and payment each require a separate human action", async ({ pa
 
   await expect(page.getByRole("heading", { name: "Quote ready for approval" })).toBeVisible();
   await expect(page.getByText("D1 receipt verified")).toBeVisible();
-  await expect(page.getByText("4 / 4 seats free")).toBeVisible();
+  await expect(page.getByText("12 / 12 seats free")).toBeVisible();
   await expect(page.getByText("Live catalog quote created")).toBeVisible();
   await expect(page.getByRole("button", { name: "Approve exact itinerary" })).toBeVisible();
   await expect(page.getByRole("button", { name: /hold 4 seats/i })).toHaveCount(0);
@@ -19,7 +19,7 @@ test("quote, hold and payment each require a separate human action", async ({ pa
   await expect(
     page.getByRole("heading", { name: "Seats held, awaiting payment approval" })
   ).toBeVisible();
-  await expect(page.getByText("0 / 4 seats free")).toBeVisible();
+  await expect(page.getByText("8 / 12 seats free")).toBeVisible();
   await expect(page.getByText("Atomic seat hold committed")).toBeVisible();
   await expect(page.getByText("Not created")).toBeVisible();
 

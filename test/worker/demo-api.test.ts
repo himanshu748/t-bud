@@ -94,10 +94,10 @@ it("returns a server receipt backed by D1 audit and live departure capacity", as
     departure: {
       id: "dep_hampta_2026_09_12",
       startAt: "2026-09-12T06:30:00.000Z",
-      capacity: 4,
+      capacity: 12,
       available: expect.any(Number)
     },
-    approvals: { itinerary: null, hold: null },
+    approvals: { itinerary: null, hold: null, payment: null },
     hold: null,
     audit: [
       {
@@ -181,7 +181,7 @@ it("advances the server receipt after both approvals and the atomic hold", async
   };
   expect(receipt).toMatchObject({
     task: { state: "held" },
-    departure: { available: 0 },
+    departure: { available: 8 },
     approvals: {
       itinerary: {
         approvedAt: expect.any(String),
@@ -232,7 +232,7 @@ it("advances the server receipt after both approvals and the atomic hold", async
     expect(expiredResponse.status).toBe(200);
     await expect(expiredResponse.json()).resolves.toMatchObject({
       task: { state: "hold_expired" },
-      departure: { available: 4 },
+      departure: { available: 12 },
       hold: null,
       audit: expect.arrayContaining([
         expect.objectContaining({
