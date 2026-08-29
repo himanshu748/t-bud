@@ -640,13 +640,16 @@ button,
 .architecture-grid {
   margin-top: 70px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border-top: 1px solid #69727a;
 }
 
 .architecture-cell {
   min-height: 220px;
   padding: 26px 24px 24px 0;
+  /* Rows keep the headings and copy on one baseline when cells wrap unevenly. */
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   border-right: 1px solid #43494f;
 }
 
@@ -667,7 +670,8 @@ button,
 }
 
 .architecture-cell h3 {
-  margin: 68px 0 0;
+  margin: 0;
+  align-self: end;
   font-size: 18px;
 }
 
@@ -1206,7 +1210,7 @@ button,
   margin-top: auto;
   padding: 18px 20px;
   border-left: 3px solid var(--success);
-  background: #edf7f0;
+  background: var(--success-surface);
 }
 
 .quote-awaiting {
@@ -1250,6 +1254,11 @@ button,
 .policy-note--hold {
   border-left-color: var(--human);
   background: var(--accent);
+}
+
+.policy-note--paid {
+  border-left-color: var(--success);
+  background: var(--success-surface);
 }
 
 .policy-note span,
@@ -1780,7 +1789,7 @@ button,
   min-height: 84px;
   border-bottom: 1px solid var(--rule-dark);
   display: grid;
-  grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(130px, 1fr)) auto;
   align-items: stretch;
 }
 
@@ -1954,7 +1963,7 @@ button,
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .architecture-cell:nth-child(2) {
+  .architecture-cell:nth-child(2n) {
     border-right: 0;
   }
 }
