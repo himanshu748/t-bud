@@ -22,13 +22,13 @@ const protocolSteps: ProtocolStep[] = [
   },
   {
     id: "HUMAN",
-    title: "Two consent gates",
-    description: "Itinerary approval and seat-hold approval remain separate."
+    title: "Three consent gates",
+    description: "Itinerary, seat hold and payment each need a separate human action."
   },
   {
     id: "HOLD",
     title: "Temporary reservation",
-    description: "Durable capacity is held for ten minutes. Payment stays off."
+    description: "Durable capacity is held for ten minutes, before any money moves."
   }
 ];
 
@@ -36,14 +36,15 @@ const architecture = [
   ["EDGE / ROUTER", "Workers", "Serves the interface and every booking protocol from one origin."],
   ["AI / ADVISORY", "Workers AI", "Structures intent and explains eligible add-ons without setting prices."],
   ["SQL / EVIDENCE", "D1", "Stores inventory, tasks, versioned quotes, approvals and the audit trail."],
-  ["STATE / CAPACITY", "Durable Objects", "Serializes last-seat holds so two agents cannot claim the same capacity."]
+  ["STATE / CAPACITY", "Durable Objects", "Serializes last-seat holds so two agents cannot claim the same capacity."],
+  ["MONEY / GATEWAY", "Razorpay", "Creates the order only against a matching human approval, then verifies the signature server-side."]
 ];
 
 const proofPoints = [
   ["LIVE CATALOG", "D1 merchant inventory"],
   ["CAPACITY", "Durable Object holds"],
   ["OPEN SURFACES", "A2A + WebMCP"],
-  ["PAYMENT", "Intentionally off"]
+  ["PAYMENT", "Razorpay, human-gated"]
 ] as const;
 
 function ArrowIcon() {
@@ -63,7 +64,7 @@ export function LandingPage() {
           <nav className="site-header__nav" aria-label="Landing page sections">
             <a href="#protocol">How it works</a>
             <a href="#decision-path">Quote logic</a>
-            <a href="#architecture">Cloudflare stack</a>
+            <a href="#architecture">Edge stack</a>
           </nav>
           <div className="site-header__status">
             <Status tone="human">Human control: on</Status>
@@ -84,8 +85,8 @@ export function LandingPage() {
             <div className="landing-hero__summary">
               <p>
                 T-Bud turns one group brief into a live merchant quote across A2A and
-                WebMCP. It pauses before the itinerary and again before the ten-minute
-                seat hold. Payment collection stays off.
+                WebMCP. It pauses before the itinerary, again before the ten-minute seat
+                hold, and again before it creates a Razorpay order.
               </p>
               <div className="landing-hero__actions">
                 <a className="button button--primary" href="/book">
@@ -119,7 +120,8 @@ export function LandingPage() {
               </div>
               <p className="section-intro">
                 Discovery, quoting and policy checks move through one bounded engine.
-                The two consequential actions remain closed until a person approves.
+                The three consequential actions stay closed until a person approves each
+                one on its own.
               </p>
             </div>
             <ProtocolLine steps={protocolSteps} />
@@ -174,12 +176,12 @@ export function LandingPage() {
           <div className="section-inner">
             <div className="section-lead">
               <div>
-                <p className="section-kicker">04 / Cloudflare stack</p>
+                <p className="section-kicker">04 / Edge stack</p>
                 <h2 className="section-heading">Open at the edge. Strict at the state.</h2>
               </div>
               <p className="section-intro">
-                AI structures intent. Deterministic services own price, capacity and
-                approval. Each responsibility stays inspectable from the same origin.
+                AI structures intent. Deterministic services own price, capacity, approval
+                and payment. Each responsibility stays inspectable from the same origin.
               </p>
             </div>
             <div className="architecture-grid">
@@ -197,7 +199,7 @@ export function LandingPage() {
         <section className="closing-section">
           <div className="section-inner closing-action">
             <div>
-              <p className="section-kicker">Live booking / no payment</p>
+              <p className="section-kicker">Live booking / razorpay test mode</p>
               <h2 className="section-heading">Give T-Bud the brief. Keep the last word.</h2>
               <div className="closing-action__actions">
                 <a className="button button--primary" href="/book">
@@ -210,7 +212,8 @@ export function LandingPage() {
             </div>
             <p className="closing-action__note">
               Set group size and budget. Query live merchant inventory. Approve the
-              exact itinerary. Place a temporary hold. No payment order is created.
+              exact itinerary. Place a temporary hold. Authorize the Razorpay order
+              yourself, and watch the Worker verify the signature.
             </p>
           </div>
         </section>

@@ -10,6 +10,7 @@ interface MerchantOverview {
   };
   webmcpTools: string[];
   paymentsEnabled: boolean;
+  paymentMode: "test_keys" | "simulated";
   departures: Array<{
     id: string;
     trekName: string;
@@ -75,7 +76,7 @@ export function MerchantPage() {
         <BrandMark />
         <div className="demo-header__context">
           <span className="demo-header__label">Merchant field console</span>
-          <Status tone="success">System bounded · payment off</Status>
+          <Status tone="success">System bounded · payment human-gated</Status>
         </div>
         <nav aria-label="Merchant navigation">
           <Link to="/">Landing</Link>
@@ -91,8 +92,8 @@ export function MerchantPage() {
           </div>
           <p>
             Inspect public protocol surfaces, departure capacity and every consequential
-            action. Discovery can run alone. Holds require direct consent. Payment
-            collection is unavailable in this pilot.
+            action. Discovery can run alone. Holds and Razorpay orders each require
+            direct human consent.
           </p>
         </section>
 
@@ -120,6 +121,16 @@ export function MerchantPage() {
               <div className="merchant-tools" aria-label="WebMCP tools">
                 <span className="instrument-label">WebMCP registration set</span>
                 {overview.webmcpTools.map((tool) => <code key={tool}>{tool}</code>)}
+              </div>
+              <div className="merchant-skills">
+                <div>
+                  <code>razorpay</code>
+                  <span>
+                    {overview.paymentMode === "test_keys"
+                      ? "Test-mode orders, HMAC signature verified on the Worker"
+                      : "Simulated gateway. Add test keys to open real Razorpay Checkout"}
+                  </span>
+                </div>
               </div>
             </section>
 
