@@ -216,3 +216,32 @@ it("repairs legacy verified receipts whose temporary hold had already expired", 
   expect(repaired.departure.available).toBe(before.departure.available);
   expect(repaired.audit.filter(e => e.action === "booking.confirmed")).toHaveLength(1);
 });
+
+async function capturedWebhook(orderId: string, amount: number, eventId: string) {
+  const secret = "isolated-webhook-test-secret";
+  const body = JSON.stringify({ event: "payment.captured", created_at: Math.floor(Date.now() / 1000), payload: { payment: { entity: { id: "pay_webhook_only", order_id: orderId, status: "captured", amount, currency: "INR" } } } });
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body))), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return worker.fetch(new Request("https://t-bud.test/api/payments/webhook", {
+    method: "POST", headers: { "content-type": "application/json", "x-razorpay-signature": signature, "x-razorpay-event-id": eventId }, body
+  }), { ...env, RAZORPAY_WEBHOOK_SECRET: secret }, createExecutionContext());
+}
+
+it("settles from a signed captured webhook when the browser never verifies, and handles retries once", async () => {
+  const { order, quote, getReceipt } = await readyOrder();
+  const before = await getReceipt();
+  const eventId = `evt_${crypto.randomUUID()}`;
+  expect((await capturedWebhook(order.orderId, quote.total, eventId)).status).toBe(200);
+  expect((await capturedWebhook(order.orderId, quote.total, eventId)).status).toBe(200);
+  const receipt = await getReceipt();
+  expect(receipt.task.state).toBe("paid");
+  expect(receipt.departure.available).toBe(before.departure.available);
+  expect(receipt.audit.filter(e => e.action === "payment.verified")).toHaveLength(1);
+  expect(receipt.audit.filter(e => e.action === "booking.confirmed")).toHaveLength(1);
+});
+
+it("rejects even a signed captured webhook when the amount does not match", async () => {
+  const { order, quote, getReceipt } = await readyOrder();
+  expect((await capturedWebhook(order.orderId, quote.total - 100, `evt_${crypto.randomUUID()}`)).status).toBe(409);
+  expect((await getReceipt()).order.verificationStatus).not.toBe("verified");
+});

@@ -27,6 +27,16 @@ test("quote, hold and payment each require a separate human action", async ({ pa
   await expect(page.getByText("Payment approval recorded")).toBeVisible();
   await expect(page.getByText("Razorpay order created")).toBeVisible();
 
+  // A dismissed or reloaded checkout must reuse the same approved order.
+  const orderBeforeReload = await page.locator(".checkout-simulator").textContent();
+  expect(orderBeforeReload).toContain("Simulated payment gateway");
+  const savedBefore = await page.evaluate(() => JSON.parse(sessionStorage.getItem("tbud.active-booking")!).checkout.orderId as string);
+  await page.reload();
+  await page.getByRole("button", { name: "Resume payment" }).click();
+  await expect(page.getByRole("button", { name: "Complete simulated payment" })).toBeVisible();
+  const savedAfter = await page.evaluate(() => JSON.parse(sessionStorage.getItem("tbud.active-booking")!).checkout.orderId as string);
+  expect(savedAfter).toBe(savedBefore);
+
   await page.getByRole("button", { name: "Complete simulated payment" }).click();
   await expect(page.getByRole("heading", { name: "Payment verified" })).toBeVisible();
   await expect(page.getByText("Razorpay signature verified")).toBeVisible();

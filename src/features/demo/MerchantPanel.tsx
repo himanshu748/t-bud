@@ -116,7 +116,7 @@ export function MerchantPanel({ state }: { state: DemoState }) {
       ) : ordered ? (
         <div className="policy-note policy-note--hold">
           <span>RAZORPAY / ORDER CREATED</span>
-          <strong>Order {state.checkout?.orderId} is open for {formatInr(quote.total)}</strong>
+          <strong>Order {(state.checkout?.orderId ?? state.receipt?.order?.razorpayOrderId)} is open for {formatInr(quote.total)}</strong>
           <p>
             The order was created only after you authorized payment. Complete or close
             Checkout: the seat hold stays yours until it expires.

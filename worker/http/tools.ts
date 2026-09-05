@@ -1,3 +1,4 @@
+import { UnclearIntentError } from "../ai/recommendation";
 import { Hono } from "hono";
 import { z } from "zod";
 import { createWorkersAiModel } from "../ai/recommendation";
@@ -141,12 +142,13 @@ toolRoutes.post("/quote_bundle", async (context) => {
       updatedAt: new Date().toISOString()
     });
     return context.json(result);
-  } catch {
+  } catch (error) {
     await repository.updateTask({
       ...task,
       state: "failed",
       updatedAt: new Date().toISOString()
     });
+    if (error instanceof UnclearIntentError) return jsonError(context, 400, "intent_unclear", error.message);
     return jsonError(context, 409, "quote_unavailable", "No eligible trek quote was found");
   }
 });

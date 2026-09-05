@@ -7,6 +7,7 @@ interface ApprovalDockProps {
   onApproveItinerary(): void;
   onRequestHold(): void;
   onApprovePayment(): void;
+  onResumePayment(): void;
   onReset(): void;
 }
 
@@ -24,6 +25,9 @@ function actionFor(props: ApprovalDockProps) {
   }
   if (state.phase === "held") {
     return ["Authorize payment with Razorpay", props.onApprovePayment] as const;
+  }
+  if (state.phase === "payment_approved" && !state.checkout) {
+    return ["Resume payment", props.onResumePayment] as const;
   }
   return null;
 }

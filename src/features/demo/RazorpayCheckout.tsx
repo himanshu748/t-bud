@@ -4,6 +4,8 @@ import type { CheckoutDetails } from "./demoReducer";
 
 interface RazorpayCheckoutProps {
   checkout: CheckoutDetails;
+  busy?: boolean;
+  onResume?(): void;
   onVerified(input: { orderId: string; paymentId: string; signature?: string }): void;
 }
 
@@ -15,6 +17,7 @@ interface RazorpayResult {
 
 interface RazorpayInstance {
   open(): void;
+  close(): void;
   on(event: "payment.failed", callback: () => void): void;
 }
 
@@ -24,32 +27,34 @@ declare global {
   }
 }
 
+let checkoutScript: Promise<void> | null = null;
+
 function loadCheckoutScript(): Promise<void> {
   if (window.Razorpay) return Promise.resolve();
-  const existing = document.querySelector<HTMLScriptElement>(
-    'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
-  );
-  if (existing) {
-    return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Checkout could not load")), {
-        once: true
-      });
-    });
-  }
-  return new Promise((resolve, reject) => {
+  if (checkoutScript) return checkoutScript;
+  checkoutScript = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.async = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Checkout could not load")), {
-      once: true
-    });
+    const fail = () => {
+      window.clearTimeout(timeout);
+      script.remove();
+      reject(new Error("Checkout could not load"));
+    };
+    const timeout = window.setTimeout(fail, 15_000);
+    script.addEventListener("load", () => {
+      if (!window.Razorpay) { fail(); return; }
+      window.clearTimeout(timeout);
+      resolve();
+    }, { once: true });
+    script.addEventListener("error", fail, { once: true });
     document.head.appendChild(script);
-  });
+  }).catch((error: unknown) => { checkoutScript = null; throw error; });
+  return checkoutScript;
 }
 
-export function RazorpayCheckout({ checkout, onVerified }: RazorpayCheckoutProps) {
+export function RazorpayCheckout({ checkout, onVerified, onResume, busy = false }: RazorpayCheckoutProps) {
+  const [status, setStatus] = useState<"loading" | "open" | "closed" | "verifying" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const onVerifiedRef = useRef(onVerified);
   onVerifiedRef.current = onVerified;
@@ -57,32 +62,47 @@ export function RazorpayCheckout({ checkout, onVerified }: RazorpayCheckoutProps
   useEffect(() => {
     if (checkout.simulated) return;
     let active = true;
+    let instance: RazorpayInstance | undefined;
+    setStatus("loading");
+    setError(null);
     void loadCheckoutScript()
       .then(() => {
         if (!active || !window.Razorpay) return;
-        const instance = new window.Razorpay({
+        instance = new window.Razorpay({
           key: checkout.keyId,
           order_id: checkout.orderId,
           amount: checkout.amount,
           currency: checkout.currency,
           name: "T-Bud",
           description: "Manali trek booking",
-          handler: (result: RazorpayResult) =>
+          handler: (result: RazorpayResult) => {
+            if (!active) return;
+            setStatus("verifying");
             onVerifiedRef.current({
               orderId: result.razorpay_order_id,
               paymentId: result.razorpay_payment_id,
               signature: result.razorpay_signature
-            }),
-          modal: { confirm_close: true }
+            });
+          },
+          modal: { confirm_close: true, ondismiss: () => {
+            if (active) setStatus((current) => current === "verifying" ? current : "closed");
+          } }
         });
-        instance.on("payment.failed", () => setError("Payment failed safely. Your hold is still active."));
+        instance.on("payment.failed", () => {
+          if (active) setError("The payment attempt failed. You can retry while the seat hold is active.");
+        });
+        setStatus("open");
         instance.open();
       })
       .catch(() => {
-        if (active) setError("Razorpay Checkout could not load. Try again while the hold is active.");
+        if (active) {
+          setStatus("error");
+          setError("Razorpay Checkout could not load. Check your connection and resume payment.");
+        }
       });
     return () => {
       active = false;
+      instance?.close();
     };
   }, [checkout]);
 
@@ -111,8 +131,17 @@ export function RazorpayCheckout({ checkout, onVerified }: RazorpayCheckoutProps
   return (
     <section className="checkout-simulator" aria-live="polite">
       <span className="instrument-label">Razorpay test mode</span>
-      <strong>Opening secure checkout…</strong>
-      {error ? <p role="alert">{error}</p> : <p>Order {checkout.orderId} is ready.</p>}
+      <strong>{status === "loading" ? "Opening secure checkout…"
+        : status === "closed" ? "Checkout closed. Your order is saved."
+        : status === "verifying" ? "Checking payment confirmation…"
+        : status === "error" ? "Checkout could not open"
+        : "Complete your payment in Razorpay"}</strong>
+      {error ? <p role="alert">{error}</p> : <p>Order {checkout.orderId}. Confirmation is checked with the server.</p>}
+      {(status === "closed" || status === "error") && onResume ? (
+        <button className="button button--primary" type="button" onClick={onResume} disabled={busy}>
+          {busy ? "Checking your order…" : "Resume payment"}
+        </button>
+      ) : null}
     </section>
   );
 }

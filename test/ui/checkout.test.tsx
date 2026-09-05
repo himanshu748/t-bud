@@ -28,3 +28,28 @@ it("labels and completes the local simulated gateway", async () => {
     paymentId: "pay_simulated"
   });
 });
+
+it("offers recovery after dismissal without claiming payment or creating another order", async () => {
+  let options: Record<string, unknown> = {};
+  const close = vi.fn();
+  window.Razorpay = class {
+    constructor(input: Record<string, unknown>) { options = input; }
+    open() {}
+    close = close;
+    on() {}
+  };
+  const onVerified = vi.fn();
+  const onResume = vi.fn();
+  const view = render(<RazorpayCheckout checkout={{ orderId: "order_existing", keyId: "rzp_test", amount: 400_000, currency: "INR", simulated: false }} onVerified={onVerified} onResume={onResume} />);
+  await screen.findByText("Complete your payment in Razorpay");
+  const { act } = await import("@testing-library/react");
+  act(() => (options.modal as { ondismiss(): void }).ondismiss());
+  expect(screen.getByText("Checkout closed. Your order is saved.")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Resume payment" }));
+  expect(onResume).toHaveBeenCalledOnce();
+  expect(onVerified).not.toHaveBeenCalled();
+  expect(options.order_id).toBe("order_existing");
+  view.unmount();
+  expect(close).toHaveBeenCalledOnce();
+  delete window.Razorpay;
+});

@@ -41,7 +41,11 @@ npx wrangler secret put RAZORPAY_WEBHOOK_SECRET
 
 `/api/payments/simulate` is refused whenever real keys are configured, so the simulated path can never stand in for a real payment.
 
-AI output is advisory. Prices come from D1 and budget eligibility comes from deterministic integer-paise policy.
+Configure a Test Mode webhook in the Razorpay dashboard for `payment.captured`, pointing to `https://<your-worker>/api/payments/webhook`, with the same `RAZORPAY_WEBHOOK_SECRET`. The endpoint verifies the signed amount and currency, persists the booking before acknowledging delivery, and handles repeated events idempotently. The booking page checks the receipt while payment is pending, so a webhook can confirm it even when the browser callback is lost.
+
+Closing Checkout leaves the approved order available through **Resume payment**. Reloading first reconciles the server receipt; resuming rechecks the active hold and reuses the same order.
+
+AI output is advisory. Workers AI uses a validated JSON schema for both intent and add-on recommendations. Explicit group sizes and total INR budgets are parsed deterministically, including number words such as “six people”; missing or ambiguous values require clarification. Prices come from D1 and budget eligibility comes from deterministic integer-paise policy.
 
 ## Local setup
 

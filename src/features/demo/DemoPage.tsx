@@ -41,7 +41,7 @@ function restoreDemoState(initialPhase: DemoPhase): DemoState {
     if (!raw) return initial;
     const saved = JSON.parse(raw) as DemoState;
     if (!saved.quote?.id || !saved.intent || !saved.phase) return initial;
-    return { ...saved, error: null, receiptError: null };
+    return { ...saved, checkout: null, error: null, receiptError: null };
   } catch {
     window.sessionStorage.removeItem(ACTIVE_BOOKING_KEY);
     return initial;
@@ -155,6 +155,28 @@ export function DemoPage({
       .finally(() => setBusy(false));
   }, []);
 
+  useEffect(() => {
+    if (state.phase !== "payment_approved" || !state.quote) return;
+    const quoteId = state.quote.id;
+    let active = true;
+    let timeout: number;
+    const poll = async () => {
+      try {
+        const receipt = await api.getReceipt(quoteId);
+        if (!active) return;
+        if (["paid", "payment_review", "hold_expired"].includes(receipt.task.state)) {
+          dispatch({ type: "BOOKING_RESTORED", state: stateFromReceipt(receipt) });
+          return;
+        }
+      } catch {
+        // The receipt's manual refresh remains available during a network outage.
+      }
+      if (active) timeout = window.setTimeout(poll, 4_000);
+    };
+    timeout = window.setTimeout(poll, 4_000);
+    return () => { active = false; window.clearTimeout(timeout); };
+  }, [api, state.phase, state.quote?.id]);
+
   async function refreshReceipt(
     quoteId: string,
     settlesWhen?: (receipt: BookingReceipt) => boolean
@@ -255,6 +277,23 @@ export function DemoPage({
     });
   }
 
+  function resumePayment() {
+    if (!state.quote || busy) return;
+    const quoteId = state.quote.id;
+    void runVerified(async () => {
+      const receipt = await api.getReceipt(quoteId);
+      const restored = stateFromReceipt(receipt);
+      if (restored.phase !== "payment_approved" || !receipt.approvals.payment) {
+        dispatch({ type: "BOOKING_RESTORED", state: restored });
+        return;
+      }
+      // The server rechecks the live hold and returns the existing approved order.
+      const checkout = await api.createCheckout(quoteId);
+      dispatch({ type: "PAYMENT_APPROVED", approvedAt: receipt.approvals.payment.approvedAt, checkout });
+      await refreshReceipt(quoteId);
+    });
+  }
+
   function completePayment(result: {
     orderId: string;
     paymentId: string;
@@ -321,6 +360,7 @@ export function DemoPage({
             onApproveItinerary={approveItinerary}
             onRequestHold={requestHold}
             onApprovePayment={approvePayment}
+            onResumePayment={resumePayment}
             onReset={() => dispatch({ type: "RESET" })}
           />
           <ProtocolRail phase={state.phase} />
@@ -328,7 +368,7 @@ export function DemoPage({
         </div>
 
         {state.checkout && state.phase === "payment_approved" ? (
-          <RazorpayCheckout checkout={state.checkout} onVerified={completePayment} />
+          <RazorpayCheckout checkout={state.checkout} onVerified={completePayment} onResume={resumePayment} busy={busy} />
         ) : null}
 
         <DecisionLedger

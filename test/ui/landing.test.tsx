@@ -31,15 +31,15 @@ it("leads with human-controlled agentic booking", () => {
 it("shows the merchant-backed value build-up", () => {
   renderLanding();
 
-  expect(screen.getByText("₹16,000")).toBeVisible();
+  expect(screen.getAllByText("₹16,000")[0]).toBeVisible();
   expect(screen.getByText("+₹3,600")).toBeVisible();
-  expect(screen.getByText("₹19,600")).toBeVisible();
+  expect(screen.getAllByText("₹19,600")[0]).toBeVisible();
   expect(screen.getByText(/live eligible quote/i)).toBeVisible();
 });
 
 it("makes the human stop visible inside the agent handshake", () => {
   renderLanding();
 
-  expect(screen.getByText("Awaiting the group")).toBeVisible();
+  expect(screen.getByText("Review the quote. Then give the go-ahead.")).toBeVisible();
   expect(screen.getByText("Human control: on")).toBeVisible();
 });
