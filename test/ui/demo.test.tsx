@@ -254,6 +254,19 @@ describe("live booking page", () => {
     expect(screen.getByText("D1 receipt verified")).toBeVisible();
   });
 
+  it("shows a paid capacity conflict as review, never a confirmed booking or another pay action", async () => {
+    window.history.replaceState(null, "", `/book?quoteId=${quote.id}`);
+    const client = api({getReceipt:vi.fn().mockResolvedValue({
+      ...receipt,
+      task:{state:"payment_review",updatedAt:receipt.task.updatedAt},
+      order:{razorpayOrderId:"order_paid",paymentId:"pay_captured",amount:quote.total,verificationStatus:"verified",simulated:false}
+    })});
+    render(<MemoryRouter><DemoPage api={client} /></MemoryRouter>);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Payment received, but the seats are no longer available");
+    expect(screen.queryByText("Payment verified, booking confirmed")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button",{name:/authorize payment/i})).not.toBeInTheDocument();
+  });
+
   it("advances only after the approval API succeeds", async () => {
     const user = userEvent.setup();
     const client = api();

@@ -66,7 +66,7 @@ export function RazorpayCheckout({ checkout, onVerified }: RazorpayCheckoutProps
           amount: checkout.amount,
           currency: checkout.currency,
           name: "T-Bud",
-          description: "Manali trek for four",
+          description: "Manali trek booking",
           handler: (result: RazorpayResult) =>
             onVerifiedRef.current({
               orderId: result.razorpay_order_id,

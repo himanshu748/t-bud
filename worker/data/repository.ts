@@ -137,7 +137,7 @@ export class D1BookingRepository implements BookingRepository {
       .prepare(
         `UPDATE a2a_tasks
          SET context_id = ?, state = ?, request_json = ?, updated_at = ?
-         WHERE id = ?`
+         WHERE id = ? AND state NOT IN ('paid', 'payment_review')`
       )
       .bind(
         task.contextId,
@@ -458,6 +458,64 @@ export class D1BookingRepository implements BookingRepository {
       )
       .bind(paymentId, new Date().toISOString(), razorpayOrderId)
       .run();
+  }
+
+  async getPaymentSettlement(quoteId: string): Promise<{ status: "confirmed" | "review" } | null> {
+    return this.db.prepare("SELECT status FROM payment_settlements WHERE quote_id = ?")
+      .bind(quoteId).first<{ status: "confirmed" | "review" }>();
+  }
+
+  async getLatestHoldByQuote(quoteId: string): Promise<HoldRecord | null> {
+    const row = await this.db.prepare("SELECT id FROM holds WHERE quote_id = ? ORDER BY expires_at DESC LIMIT 1")
+      .bind(quoteId).first<{ id: string }>();
+    return row ? this.getHold(row.id) : null;
+  }
+
+  async settlePayment(input: {
+    quote: Quote; hold: HoldRecord; order: OrderRecord; paymentId: string;
+    confirmed: boolean; source: string;
+  }): Promise<void> {
+    const now = new Date().toISOString();
+    const status = input.confirmed ? "confirmed" : "review";
+    // The DO reservation is idempotent; this atomic batch can safely be retried
+    // if D1 fails after the DO has committed the seats.
+    await this.db.batch([
+      this.db.prepare("INSERT OR IGNORE INTO payment_settlements (quote_id, hold_id, status, created_at) VALUES (?, ?, ?, ?)")
+        .bind(input.quote.id, input.hold.id, status, now),
+      this.db.prepare("UPDATE orders SET payment_id = ?, verification_status = 'verified', updated_at = ? WHERE id = ?")
+        .bind(input.paymentId, now, input.order.id),
+      this.db.prepare("UPDATE holds SET status = 'released' WHERE id = ?").bind(input.hold.id),
+      this.db.prepare("UPDATE a2a_tasks SET state = ?, updated_at = ? WHERE id = ?")
+        .bind(input.confirmed ? "paid" : "payment_review", now, input.quote.taskId),
+      this.db.prepare("UPDATE quotes SET status = 'approved' WHERE id = ?").bind(input.quote.id),
+      this.db.prepare(`INSERT OR IGNORE INTO audit_events
+        (id, task_id, actor, action, target, payload_json, result, created_at)
+        VALUES (?, ?, 'system', 'payment.verified', ?, ?, 'accepted', ?)`)
+        .bind(`payment:${input.order.id}`, input.quote.taskId, input.order.id,
+          JSON.stringify({ source: input.source, bookingStatus: status }), now),
+      this.db.prepare(`INSERT OR IGNORE INTO audit_events
+        (id, task_id, actor, action, target, payload_json, result, created_at)
+        VALUES (?, ?, 'system', ?, ?, ?, ?, ?)`)
+        .bind(`booking:${input.order.id}`, input.quote.taskId,
+          input.confirmed ? "booking.confirmed" : "booking.review_required", input.quote.id,
+          JSON.stringify({ holdId: input.hold.id }), input.confirmed ? "accepted" : "rejected", now)
+    ]);
+  }
+
+  async expireUnpaidHold(hold: HoldRecord, taskId: string): Promise<void> {
+    const now = new Date().toISOString();
+    await this.db.batch([
+      this.db.prepare(`UPDATE holds SET status = 'expired' WHERE id = ? AND status = 'held'
+        AND NOT EXISTS (SELECT 1 FROM payment_settlements WHERE quote_id = ?)`)
+        .bind(hold.id, hold.quoteId),
+      this.db.prepare("UPDATE a2a_tasks SET state = 'hold_expired', updated_at = ? WHERE id = ? AND state NOT IN ('paid', 'payment_review')")
+        .bind(now, taskId),
+      this.db.prepare(`INSERT OR IGNORE INTO audit_events
+        (id, task_id, actor, action, target, payload_json, result, created_at)
+        SELECT ?, ?, 'system', 'hold.expired', ?, ?, 'recorded', ?
+        WHERE NOT EXISTS (SELECT 1 FROM payment_settlements WHERE quote_id = ?)`)
+        .bind(`expired:${hold.id}`, taskId, hold.id, JSON.stringify({quoteId: hold.quoteId}), now, hold.quoteId)
+    ]);
   }
 
   async recordPaymentEvent(

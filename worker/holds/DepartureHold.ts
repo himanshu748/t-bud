@@ -16,12 +16,18 @@ export type HoldResult =
 interface CapacityState {
   capacity: number;
   holds: Record<string, HoldRequest>;
+  bookings?: Record<string, HoldRequest>;
+  reviewQuotes?: string[];
 }
 
 function removeExpired(state: CapacityState, now: number) {
   for (const [holdId, hold] of Object.entries(state.holds)) {
     if (Date.parse(hold.expiresAt) <= now) delete state.holds[holdId];
   }
+}
+
+function bookedSeats(state: CapacityState): number {
+  return Object.values(state.bookings ?? {}).reduce((sum, booking) => sum + booking.seats, 0);
 }
 
 function heldSeats(state: CapacityState): number {
@@ -37,7 +43,7 @@ export class DepartureHold extends DurableObject<Env> {
       const current = await transaction.get<CapacityState>("capacity");
       const state = current ?? { capacity: input.capacity, holds: {} };
       removeExpired(state, Date.now());
-      if (Object.keys(state.holds).length === 0) state.capacity = input.capacity;
+      if (Object.keys(state.holds).length === 0 && bookedSeats(state) === 0) state.capacity = input.capacity;
       await transaction.put("capacity", state);
     });
   }
@@ -53,7 +59,8 @@ export class DepartureHold extends DurableObject<Env> {
       };
       const now = Date.now();
       removeExpired(state, now);
-      const available = Math.max(0, state.capacity - heldSeats(state));
+      const available = Math.max(0, state.capacity - heldSeats(state) - bookedSeats(state));
+      if (state.bookings?.[input.quoteId]) return { status: "expired" as const, available };
       const existing = state.holds[input.holdId];
       if (existing) {
         return {
@@ -80,6 +87,34 @@ export class DepartureHold extends DurableObject<Env> {
     });
   }
 
+  // A payment can outlive the checkout hold. Serialize confirmation against
+  // competing reservations and never reclaim seats already sold to someone else.
+  async confirm(input: HoldRequest): Promise<{ confirmed: boolean }> {
+    if (!Number.isInteger(input.seats) || input.seats < 1) throw new Error("invalid seats");
+    return this.ctx.storage.transaction(async (transaction) => {
+      const state = await transaction.get<CapacityState>("capacity");
+      if (!state) throw new Error("departure capacity is not configured");
+      state.bookings ??= {};
+      if (state.bookings[input.quoteId]) return { confirmed: true };
+      if (state.reviewQuotes?.includes(input.quoteId)) return { confirmed: false };
+      removeExpired(state, Date.now());
+      const ownHold = state.holds[input.holdId];
+      if (ownHold && (ownHold.quoteId !== input.quoteId || ownHold.seats !== input.seats)) {
+        throw new Error("hold does not match payment quote");
+      }
+      const available = state.capacity - bookedSeats(state) - heldSeats(state) + (ownHold?.seats ?? 0);
+      if (available < input.seats) {
+        (state.reviewQuotes ??= []).push(input.quoteId);
+        await transaction.put("capacity", state);
+        return { confirmed: false };
+      }
+      delete state.holds[input.holdId];
+      state.bookings[input.quoteId] = input;
+      await transaction.put("capacity", state);
+      return { confirmed: true };
+    });
+  }
+
   async release(holdId: string): Promise<{ released: boolean }> {
     return this.ctx.storage.transaction(async (transaction) => {
       const state = await transaction.get<CapacityState>("capacity");
@@ -95,6 +130,7 @@ export class DepartureHold extends DurableObject<Env> {
   async getAvailability(): Promise<{
     capacity: number;
     heldSeats: number;
+    bookedSeats: number;
     available: number;
   }> {
     return this.ctx.storage.transaction(async (transaction) => {
@@ -108,7 +144,8 @@ export class DepartureHold extends DurableObject<Env> {
       return {
         capacity: state.capacity,
         heldSeats: held,
-        available: Math.max(0, state.capacity - held)
+        bookedSeats: bookedSeats(state),
+        available: Math.max(0, state.capacity - held - bookedSeats(state))
       };
     });
   }

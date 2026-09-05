@@ -20,7 +20,7 @@ export interface BookingApi {
     orderId: string;
     paymentId: string;
     signature?: string;
-  }): Promise<{ verified: true }>;
+  }): Promise<{ verified: true; bookingConfirmed?: boolean }>;
   getReceipt(quoteId: string): Promise<BookingReceipt>;
 }
 

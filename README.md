@@ -2,7 +2,7 @@
 
 T-Bud is a human-gated merchant booking agent for a Manali trekking operator. A buyer agent can discover the merchant through A2A v1.0, use the same booking capabilities through WebMCP and prepare a quote from the merchant catalog. It cannot hold seats, and it cannot create a Razorpay order, until a person approves each of those actions separately.
 
-Three human gates, in order: approve the exact itinerary, place the ten-minute seat hold, authorize payment. The Razorpay order is created only at the third gate, and the Worker verifies the payment signature before any booking is marked paid.
+Three human gates, in order: approve the exact itinerary, place the ten-minute seat hold, authorize payment. The Razorpay order is created only at the third gate, and the Worker verifies the payment signature before any booking is marked paid. Captured payments convert temporary capacity into a permanent reservation. If a late payment arrives after those seats have been taken, the payment is recorded as verified and the booking is marked `payment_review` for a merchant refund or alternative departure; it is never falsely confirmed.
 
 ## Live pilot
 

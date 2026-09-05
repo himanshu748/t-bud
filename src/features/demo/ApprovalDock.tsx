@@ -12,6 +12,7 @@ interface ApprovalDockProps {
 
 function actionFor(props: ApprovalDockProps) {
   const { state } = props;
+  if (state.receipt?.task.state === "payment_review") return null;
   if (["idle", "quoting", "budget_conflict", "failed"].includes(state.phase)) {
     return ["Check live inventory", props.onPrepareQuote] as const;
   }

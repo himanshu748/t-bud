@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { createExecutionContext } from "cloudflare:test";
+import { createExecutionContext, runInDurableObject } from "cloudflare:test";
 import worker from "../../worker";
 
 const intent =
@@ -109,7 +109,7 @@ it("creates a simulated Razorpay order once the human gate is recorded", async (
     orderId: body.orderId
   });
   expect(verified.status).toBe(200);
-  await expect(verified.json()).resolves.toEqual({ verified: true });
+  await expect(verified.json()).resolves.toEqual({ verified: true, bookingConfirmed: true });
 });
 
 it("rejects a webhook that carries no valid signature", async () => {
@@ -131,4 +131,88 @@ it("rejects a webhook that carries no valid signature", async () => {
   await expect(response.json()).resolves.toMatchObject({
     error: { code: "signature_invalid" }
   });
+});
+
+async function readyOrder() {
+  const cookie = await bootstrap();
+  const { quote } = await createQuote(cookie);
+  // Paid seats persist by design; give each lifecycle test its own departure.
+  const departureId = `dep_test_${crypto.randomUUID()}`;
+  await env.DB.prepare("INSERT INTO departures (id,trek_id,start_at,capacity,available,status) VALUES (?, 'trek_hampta', '2026-09-12T06:30:00Z',12,12,'active')").bind(departureId).run();
+  await env.DB.prepare("UPDATE quotes SET departure_id = ? WHERE id = ?").bind(departureId,quote.id).run();
+
+  for (const path of ["/api/bookings/approve-itinerary", "/api/bookings/approve-hold", "/api/tools/request_hold", "/api/bookings/approve-payment"]) {
+    expect((await post(cookie, path, { quoteId: quote.id })).status).toBe(200);
+  }
+  const order = await (await post(cookie, "/api/payments/order", { quoteId: quote.id })).json<{orderId:string}>();
+  const getReceipt = async () => (await worker.fetch(new Request(`https://t-bud.test/api/bookings/${quote.id}/receipt`, {headers:{cookie}}), env, createExecutionContext())).json<{
+    task:{state:string}; departure:{id:string;available:number}; hold:{id:string}|null;
+    order:{verificationStatus:string}; audit:Array<{action:string}>;
+  }>();
+  return { cookie, quote, order, getReceipt };
+}
+
+it("keeps purchased seats reserved after the old hold expiry, retries and receipt refresh", async () => {
+  const { cookie, quote, order, getReceipt } = await readyOrder();
+  const before = await getReceipt();
+  const stub = env.DEPARTURE_HOLD.getByName(before.departure.id);
+  const results = await Promise.all([1,2].map(() => post(cookie, "/api/payments/simulate", {orderId:order.orderId})));
+  expect(results.map(r => r.status)).toEqual([200,200]);
+  await env.DB.prepare("UPDATE holds SET expires_at = '2000-01-01T00:00:00Z' WHERE quote_id = ?").bind(quote.id).run();
+  await runInDurableObject(stub, async (_instance, state) => {
+    const stored = await state.storage.get<{bookings:Record<string,{expiresAt:string}>}>("capacity");
+    for (const booking of Object.values(stored!.bookings)) booking.expiresAt = "2000-01-01T00:00:00Z";
+    await state.storage.put("capacity", stored);
+  });
+  // Reconfiguration and releasing a former hold must never free sold seats.
+  await stub.release(before.hold!.id);
+  await stub.configure({capacity:12});
+  const after = await getReceipt();
+  expect(after.task.state).toBe("paid");
+  expect(after.order.verificationStatus).toBe("verified");
+  expect(after.hold).toBeNull();
+  expect(after.departure.available).toBe(before.departure.available);
+  expect(after.audit.filter(e => e.action === "payment.verified")).toHaveLength(1);
+  expect(after.audit.filter(e => e.action === "booking.confirmed")).toHaveLength(1);
+  expect(after.audit.some(e => e.action === "hold.expired")).toBe(false);
+});
+
+it("records a late payment for review when the expired seats were taken, without overselling", async () => {
+  const {cookie, quote, order, getReceipt} = await readyOrder();
+  const before = await getReceipt();
+  const stub = env.DEPARTURE_HOLD.getByName(before.departure.id);
+  await stub.release(before.hold!.id);
+  await env.DB.prepare("UPDATE holds SET expires_at = '2000-01-01T00:00:00Z' WHERE quote_id = ?").bind(quote.id).run();
+  const free = (await stub.getAvailability()).available;
+  await stub.reserve({holdId:"other",quoteId:"other",seats:free,expiresAt:"2099-01-01T00:00:00Z"});
+  await expect((await post(cookie,"/api/payments/simulate",{orderId:order.orderId})).json()).resolves.toEqual({verified:true,bookingConfirmed:false});
+  const receipt = await getReceipt();
+  expect(receipt.task.state).toBe("payment_review");
+  expect(receipt.order.verificationStatus).toBe("verified");
+  expect(receipt.departure.available).toBe(0);
+  await stub.release("other");
+  // Duplicate delivery preserves the recorded review outcome.
+  await expect((await post(cookie,"/api/payments/simulate",{orderId:order.orderId})).json()).resolves.toEqual({verified:true,bookingConfirmed:false});
+});
+
+it("confirms a late payment when capacity is still available", async () => {
+  const {cookie, order, getReceipt} = await readyOrder();
+  const before = await getReceipt();
+  const stub = env.DEPARTURE_HOLD.getByName(before.departure.id);
+  await stub.release(before.hold!.id);
+  await expect((await post(cookie,"/api/payments/simulate",{orderId:order.orderId})).json()).resolves.toEqual({verified:true,bookingConfirmed:true});
+  expect((await getReceipt()).task.state).toBe("paid");
+  expect((await stub.getAvailability()).available).toBe(before.departure.available);
+});
+
+it("repairs legacy verified receipts whose temporary hold had already expired", async () => {
+  const {quote,order,getReceipt} = await readyOrder();
+  const before = await getReceipt();
+  await env.DB.prepare("UPDATE orders SET payment_id = 'pay_legacy', verification_status = 'verified' WHERE razorpay_order_id = ?").bind(order.orderId).run();
+  await env.DB.prepare("UPDATE holds SET status = 'expired', expires_at = '2000-01-01T00:00:00Z' WHERE quote_id = ?").bind(quote.id).run();
+  await env.DEPARTURE_HOLD.getByName(before.departure.id).release(before.hold!.id);
+  const repaired = await getReceipt();
+  expect(repaired.task.state).toBe("paid");
+  expect(repaired.departure.available).toBe(before.departure.available);
+  expect(repaired.audit.filter(e => e.action === "booking.confirmed")).toHaveLength(1);
 });

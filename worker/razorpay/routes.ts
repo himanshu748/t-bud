@@ -7,6 +7,7 @@ import type { Env } from "../env";
 import { jsonError } from "../http/errors";
 import { enforceRateLimit, type SecurityVariables } from "../http/security";
 import { verifyPaymentSignature, verifyWebhookSignature } from "./signature";
+import { HttpRazorpayGateway } from "./client";
 import { gatewayForEnv, RazorpayCheckoutService } from "./service";
 
 type AppContext = { Bindings: Env; Variables: SecurityVariables };
@@ -32,7 +33,9 @@ const CapturedWebhook = z
           entity: z.object({
             id: z.string().min(1),
             order_id: z.string().min(1),
-            status: z.string()
+            status: z.string(),
+            amount: z.number().int().nonnegative(),
+            currency: z.string()
           })
         })
       })
@@ -40,36 +43,30 @@ const CapturedWebhook = z
   })
   .passthrough();
 
-async function completeOrder(
+export async function completeOrder(
+  env: Env,
   repository: D1BookingRepository,
   razorpayOrderId: string,
   paymentId: string,
-  source: "checkout" | "webhook" | "simulation"
-) {
+  source: "checkout" | "webhook" | "simulation" | "reconciliation"
+): Promise<boolean> {
   const order = await repository.getOrderByGatewayId(razorpayOrderId);
   if (!order) throw new Error("order not found");
-  if (order.verificationStatus === "verified") return;
+  const settled = await repository.getPaymentSettlement(order.quoteId);
+  if (settled) return settled.status === "confirmed";
   const quote = await repository.getQuote(order.quoteId);
   if (!quote) throw new Error("quote not found");
-  await repository.markOrderVerified(razorpayOrderId, paymentId);
-  const task = await repository.getTask(quote.taskId);
-  if (task) {
-    await repository.updateTask({
-      ...task,
-      state: "paid",
-      updatedAt: new Date().toISOString()
-    });
-  }
-  await repository.appendAudit({
-    id: crypto.randomUUID(),
-    taskId: quote.taskId,
-    actor: "system",
-    action: "payment.verified",
-    target: order.id,
-    payload: { source },
-    result: "accepted",
-    createdAt: new Date().toISOString()
+  const hold = await repository.getLatestHoldByQuote(quote.id);
+  if (!hold) throw new Error("payment has no booking hold");
+  const departure = (await repository.listDepartures(quote.trekId)).find(d => d.id === quote.departureId);
+  if (!departure) throw new Error("departure not found");
+  const stub = env.DEPARTURE_HOLD.getByName(quote.departureId);
+  await stub.configure({ capacity: departure.capacity });
+  const { confirmed } = await stub.confirm({
+    holdId: hold.id, quoteId: quote.id, seats: quote.partySize, expiresAt: hold.expiresAt
   });
+  await repository.settlePayment({ quote, hold, order, paymentId, confirmed, source });
+  return confirmed;
 }
 
 export const paymentRoutes = new Hono<AppContext>();
@@ -140,13 +137,20 @@ paymentRoutes.post("/verify", async (context) => {
   if (!verified) {
     return jsonError(context, 403, "signature_invalid", "Payment signature could not be verified");
   }
-  await completeOrder(
+  try {
+    await new HttpRazorpayGateway({keyId:context.env.RAZORPAY_KEY_ID!, keySecret:context.env.RAZORPAY_KEY_SECRET})
+      .ensureCaptured({paymentId:input.data.razorpay_payment_id, orderId:order.razorpayOrderId, amount:order.amount});
+  } catch (error) {
+    return jsonError(context, 409, "payment_not_captured", error instanceof Error ? error.message : "Retry payment verification");
+  }
+  const bookingConfirmed = await completeOrder(
+    context.env,
     repository,
     order.razorpayOrderId,
     input.data.razorpay_payment_id,
     "checkout"
   );
-  return context.json({ verified: true });
+  return context.json({ verified: true, bookingConfirmed });
 });
 
 paymentRoutes.post("/simulate", async (context) => {
@@ -168,13 +172,14 @@ paymentRoutes.post("/simulate", async (context) => {
   if (!approval || !(await approvalMatches(approval, quote, context.get("sessionId")))) {
     return jsonError(context, 403, "approval_required", "Payment approval is required");
   }
-  await completeOrder(
+  const bookingConfirmed = await completeOrder(
+    context.env,
     repository,
     order.razorpayOrderId,
     "pay_simulated",
     "simulation"
   );
-  return context.json({ verified: true });
+  return context.json({ verified: true, bookingConfirmed });
 });
 
 paymentRoutes.post("/webhook", async (context) => {
@@ -197,7 +202,7 @@ paymentRoutes.post("/webhook", async (context) => {
     return jsonError(context, 400, "invalid_request", "Webhook payload is invalid");
   }
   const age = Date.now() - event.data.created_at * 1_000;
-  if (age > 5 * 60_000 || age < -5 * 60_000) {
+  if (age < -5 * 60_000) {
     return jsonError(context, 409, "stale_webhook", "Webhook timestamp is outside the accepted window");
   }
   if (event.data.event !== "payment.captured" || !event.data.payload) {
@@ -208,21 +213,11 @@ paymentRoutes.post("/webhook", async (context) => {
   const repository = new D1BookingRepository(context.env.DB);
   const order = await repository.getOrderByGatewayId(payment.order_id);
   if (!order) return context.json({ accepted: true });
-  context.executionCtx.waitUntil(
-    (async () => {
-      const firstDelivery = await repository.recordPaymentEvent(
-        eventId,
-        event.data.event,
-        new Date().toISOString()
-      );
-      if (!firstDelivery) return;
-      await completeOrder(
-        repository,
-        order.razorpayOrderId,
-        payment.id,
-        "webhook"
-      );
-    })()
-  );
+  if (payment.status !== "captured" || payment.amount !== order.amount || payment.currency !== "INR") {
+    return jsonError(context, 409, "payment_mismatch", "Captured payment does not match the order");
+  }
+  // Acknowledge only after durable completion so Razorpay can retry failures.
+  await completeOrder(context.env, repository, order.razorpayOrderId, payment.id, "webhook");
+  await repository.recordPaymentEvent(eventId, event.data.event, new Date().toISOString());
   return context.json({ accepted: true });
 });

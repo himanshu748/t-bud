@@ -51,7 +51,9 @@ function restoreDemoState(initialPhase: DemoPhase): DemoState {
 function stateFromReceipt(receipt: BookingReceipt): DemoState {
   const phase: BookingPhase = receipt.quote.total > receipt.quote.budget
     ? "budget_conflict"
-    : receipt.order?.verificationStatus === "verified" || receipt.task.state === "paid"
+    : receipt.task.state === "payment_review"
+      ? "failed"
+    : receipt.task.state === "paid"
       ? "paid"
     : receipt.task.state === "hold_expired"
       ? "failed"
@@ -104,7 +106,9 @@ function stateFromReceipt(receipt: BookingReceipt): DemoState {
       : null,
     receipt,
     receiptError: null,
-    error: phase === "failed"
+    error: receipt.task.state === "payment_review"
+      ? "Payment received, but the seats are no longer available. Contact the merchant with your order ID for a refund or another departure. Do not pay again."
+      : phase === "failed"
       ? "The seat hold expired. Check live inventory to prepare a fresh quote."
       : null
   };
@@ -258,7 +262,11 @@ export function DemoPage({
   }) {
     if (!state.quote) return;
     void runVerified(async () => {
-      await api.verifyPayment(result);
+      const verification = await api.verifyPayment(result);
+      if (verification.bookingConfirmed === false) {
+        await reconcileReceipt(state.quote!.id);
+        return;
+      }
       dispatch({
         type: "PAYMENT_VERIFIED",
         orderId: result.orderId,

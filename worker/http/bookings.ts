@@ -7,6 +7,7 @@ import {
   type Approval
 } from "../domain/approval";
 import type { Env } from "../env";
+import { completeOrder } from "../razorpay/routes";
 import { jsonError } from "./errors";
 import { enforceRateLimit, type SecurityVariables } from "./security";
 
@@ -24,6 +25,14 @@ bookingRoutes.get("/:quoteId/receipt", async (context) => {
   const quote = await repository.getQuote(quoteId);
   if (!quote) {
     return jsonError(context, 404, "quote_not_found", "Quote not found");
+  }
+
+  // Repair pre-fix verified receipts on read using their stored server proof.
+  // New bookings have an atomic settlement already, so this is a no-op for them.
+  const priorOrder = await repository.getOrderByQuote(quote.id);
+  if (priorOrder?.verificationStatus === "verified" && priorOrder.paymentId &&
+      !(await repository.getPaymentSettlement(quote.id))) {
+    await completeOrder(context.env, repository, priorOrder.razorpayOrderId, priorOrder.paymentId, "reconciliation");
   }
 
   const [
@@ -61,29 +70,10 @@ bookingRoutes.get("/:quoteId/receipt", async (context) => {
   let effectiveTask = task;
   let effectiveHold = storedHold;
   if (storedHold && Date.parse(storedHold.expiresAt) <= Date.now()) {
-    const expiredAt = new Date().toISOString();
-    effectiveTask = {
-      ...task,
-      state: "hold_expired",
-      updatedAt: expiredAt
-    };
-    const expirationEvent = {
-      id: crypto.randomUUID(),
-      taskId: quote.taskId,
-      actor: "system" as const,
-      action: "hold.expired",
-      target: storedHold.id,
-      payload: { quoteId: quote.id, expiredAt: storedHold.expiresAt },
-      result: "recorded" as const,
-      createdAt: expiredAt
-    };
-    await Promise.all([
-      repository.updateHoldStatus(storedHold.id, "expired"),
-      repository.updateTask(effectiveTask),
-      repository.appendAudit(expirationEvent)
-    ]);
-    audit.push(expirationEvent);
-    effectiveHold = null;
+    await repository.expireUnpaidHold(storedHold, quote.taskId);
+    effectiveTask = (await repository.getTask(quote.taskId))!;
+    effectiveHold = await repository.getActiveHoldByQuote(quote.id);
+    audit.splice(0, audit.length, ...await repository.listAudit(quote.taskId));
   }
   const approvalReceipt = (approval: Approval | null) =>
     approval
