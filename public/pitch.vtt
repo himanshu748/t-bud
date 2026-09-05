@@ -1,0 +1,293 @@
+WEBVTT
+
+1
+00:00:00.320 --> 00:00:04.480
+T-Bud makes a trekking merchant discoverable and transactable by an AI buyer,
+
+2
+00:00:04.480 --> 00:00:07.440
+while keeping each consequential decision with a person.
+
+3
+00:00:07.440 --> 00:00:10.880
+This is a working Manali booking pilot for Razorpay's AI Growth and
+
+4
+00:00:10.880 --> 00:00:15.275
+Agentic Commerce track. The problem is simple: a conversational agent can help
+
+5
+00:00:15.275 --> 00:00:19.115
+choose a trip, but a recommendation should not silently reserve seats or
+
+6
+00:00:19.115 --> 00:00:23.905
+authorize a payment. T-Bud makes those boundaries visible, enforceable, and auditable.
+
+7
+00:00:24.715 --> 00:00:29.250
+Consider four friends planning a two-day, one-night Manali trek, with a total
+
+8
+00:00:29.250 --> 00:00:31.320
+ceiling of twenty thousand rupees.
+
+9
+00:00:31.410 --> 00:00:33.720
+They want pickup and upgraded meals.
+
+10
+00:00:33.890 --> 00:00:38.050
+The merchant catalog prices the base trek at sixteen thousand, pickup at
+
+11
+00:00:38.050 --> 00:00:41.015
+two thousand, and meals at sixteen hundred.
+
+12
+00:00:41.105 --> 00:00:44.215
+The total is nineteen thousand six hundred rupees.
+
+13
+00:00:44.385 --> 00:00:47.415
+This landing-page example is labelled illustrative.
+
+14
+00:00:47.585 --> 00:00:51.265
+The booking interface calls the actual Worker to prepare a fresh quote
+
+15
+00:00:51.265 --> 00:00:52.855
+from the seeded merchant catalog.
+
+16
+00:00:54.490 --> 00:00:55.690
+Here is the failure path.
+
+17
+00:00:55.690 --> 00:00:59.920
+With the same group and add-ons, a nineteen-thousand-rupee ceiling is too low.
+
+18
+00:01:00.010 --> 00:01:04.650
+The deterministic policy returns a budget conflict and the exact six-hundred-rupee
+
+19
+00:01:04.650 --> 00:01:09.805
+overage. It does not offer an itinerary approval, reserve capacity, or create
+
+20
+00:01:09.805 --> 00:01:13.325
+a payment order. The traveller can change the budget or remove an
+
+21
+00:01:13.325 --> 00:01:15.715
+add-on, then request a new quote.
+
+22
+00:01:15.965 --> 00:01:18.995
+The failure has a clear explanation and a recovery action.
+
+23
+00:01:21.020 --> 00:01:23.580
+Restoring the budget to twenty thousand produces an eligible quote.
+
+24
+00:01:23.580 --> 00:01:27.900
+Its line items, total, version, departure and expiry are recorded on the
+
+25
+00:01:27.900 --> 00:01:31.730
+server. The first human gate approves that exact itinerary.
+
+26
+00:01:32.205 --> 00:01:35.645
+Approval is bound to the quote and the browser session, rather than
+
+27
+00:01:35.645 --> 00:01:38.115
+a generic permission to buy something later.
+
+28
+00:01:38.205 --> 00:01:41.645
+An agent can prepare a proposal, but the human must approve the
+
+29
+00:01:41.645 --> 00:01:43.555
+proposal that will actually be used.
+
+30
+00:01:46.040 --> 00:01:47.320
+The second gate is a separate decision to hold the seats for
+
+31
+00:01:47.320 --> 00:01:52.520
+ten minutes. A Cloudflare Durable Object checks capacity atomically, so competing
+
+32
+00:01:52.520 --> 00:01:55.310
+agents cannot both claim the same last seats.
+
+33
+00:01:55.480 --> 00:01:58.830
+The interface then shows the active hold and remaining availability.
+
+34
+00:01:59.495 --> 00:02:01.975
+Holding seats still does not authorize payment.
+
+35
+00:02:01.975 --> 00:02:05.255
+If the hold expires, the flow requires a fresh valid path through
+
+36
+00:02:05.255 --> 00:02:07.725
+the booking rules before checkout can continue.
+
+37
+00:02:10.135 --> 00:02:12.270
+Only the third human approval creates a Razorpay order for the approved
+
+38
+00:02:12.270 --> 00:02:17.870
+amount. This pilot uses real Razorpay test-mode APIs, and no real money
+
+39
+00:02:17.870 --> 00:02:21.940
+is collected. Closing the checkout does not lose the order.
+
+40
+00:02:22.110 --> 00:02:26.585
+Resume payment checks the server receipt and the active hold, then reopens
+
+41
+00:02:26.585 --> 00:02:31.305
+the same approved order. Reloading the page also reconciles the receipt before
+
+42
+00:02:31.305 --> 00:02:35.535
+offering a resume action, rather than trusting stale browser state.
+
+43
+00:02:38.265 --> 00:02:40.280
+For payment completion, this is a separate sandbox transaction already verified
+
+44
+00:02:40.280 --> 00:02:44.680
+on the deployed system. Razorpay reported a captured payment of four thousand
+
+45
+00:02:44.680 --> 00:02:49.400
+rupees. The signed payment-captured webhook reached T-Bud, and the audit recorded
+
+46
+00:02:49.400 --> 00:02:52.750
+webhook as the verification source, with the booking confirmed.
+
+47
+00:02:53.385 --> 00:02:55.775
+Purchased seats become a permanent reservation.
+
+48
+00:02:55.945 --> 00:02:59.545
+If a late captured payment arrives after capacity is gone, the result
+
+49
+00:02:59.545 --> 00:03:03.455
+is payment review, with a merchant refund or alternative departure needed.
+
+50
+00:03:03.465 --> 00:03:05.055
+It is never falsely confirmed.
+
+51
+00:03:08.680 --> 00:03:09.550
+The architecture separates recommendation from authority.
+
+52
+00:03:09.560 --> 00:03:14.760
+Workers AI extracts the request and recommends catalog add-ons using validated
+
+53
+00:03:14.760 --> 00:03:21.045
+JSON schemas. Explicit group sizes and total rupee budgets are parsed deterministically.
+
+54
+00:03:21.135 --> 00:03:26.325
+D1 supplies prices and stores tasks, quotes, approvals and audit records.
+
+55
+00:03:26.415 --> 00:03:31.445
+Durable Objects own capacity, while the Worker verifies Razorpay payment proofs.
+
+56
+00:03:31.640 --> 00:03:36.200
+A six-person request with pickup and a thirty-thousand-rupee ceiling was verified
+
+57
+00:03:36.200 --> 00:03:41.480
+live: both AI stages ran, and the catalog total was twenty-six thousand
+
+58
+00:03:41.480 --> 00:03:46.795
+rupees. A public Agent Card exposes the booking capability through A two
+
+59
+00:03:46.795 --> 00:03:50.955
+A version one. Web M C P exposes the same tools in
+
+60
+00:03:50.955 --> 00:03:55.355
+the browser. Both use the same booking handlers, budget rules and human
+
+61
+00:03:55.355 --> 00:03:59.425
+gates. There is no separate agent shortcut around approvals.
+
+62
+00:03:59.435 --> 00:04:03.810
+The merchant view makes the protocol surfaces and decision trail inspectable.
+
+63
+00:04:03.810 --> 00:04:08.290
+This is the core agentic-commerce contribution: an agent-readable merchant with
+
+64
+00:04:08.290 --> 00:04:11.960
+an end-to-end transaction path whose authority stays bounded.
+
+65
+00:04:16.705 --> 00:04:18.305
+Validation covers sixty-six unit and interface tests, forty-four Worker integration
+
+66
+00:04:18.305 --> 00:04:21.655
+tests, and seven browser end-to-end tests.
+
+67
+00:04:21.985 --> 00:04:26.545
+The browser suite checks separate approvals, budget failure, checkout reload
+
+68
+00:04:26.545 --> 00:04:29.710
+recovery, responsive layouts and accessibility.
+
+69
+00:04:29.960 --> 00:04:34.360
+The pilot uses seeded inventory, not a connected tour operator, and payments
+
+70
+00:04:34.360 --> 00:04:38.840
+remain in test mode. The next step is operator integration and broader
+
+71
+00:04:38.840 --> 00:04:44.182
+field validation. The public repository, architecture and live demo are available
+
+72
+00:04:44.182 --> 00:04:49.142
+for inspection. T-Bud turns an agent's plan into a reviewable booking, one
+
+73
+00:04:49.142 --> 00:04:50.732
+human decision at a time.
